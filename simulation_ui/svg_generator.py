@@ -46,7 +46,7 @@ def svg_dem(elevation_data: np.ndarray) -> str:
         parts.append(f'<rect x="480" y="{20 + i*20}" width="14" height="20" fill="{c}" stroke="none"/>')
     parts.append(f'<text x="494" y="18" fill="#dee2e6" font-size="8" text-anchor="middle" font-family="monospace">{vmax:.0f}m</text>')
     parts.append(f'<text x="494" y="238" fill="#dee2e6" font-size="8" text-anchor="middle" font-family="monospace">{vmin:.0f}m</text>')
-    return _svg_wrap("".join(parts), 260)
+    return _svg_wrap("".join(parts), 280)
 
 
 def svg_nmea(readings_alt: List[float]) -> str:
@@ -159,6 +159,7 @@ def svg_profile(observed: np.ndarray, reference: Optional[np.ndarray]) -> str:
 
 def svg_heatmap(matrix: np.ndarray, az_labels: List[str], sp_labels: List[str], title: str,
                 highlight_az: Optional[float] = None, highlight_sp: Optional[float] = None,
+                highlight_ri: Optional[int] = None, highlight_ci: Optional[int] = None,
                 palette: Optional[List[str]] = None) -> str:
     nz, ns = matrix.shape
     cell_h = 180 / nz if nz else 1
@@ -170,19 +171,14 @@ def svg_heatmap(matrix: np.ndarray, az_labels: List[str], sp_labels: List[str], 
     parts = []
     parts.append(f'<text x="250" y="14" fill="#dee2e6" font-size="11" text-anchor="middle" font-family="monospace">{title}</text>')
     parts.append('<text x="10" y="115" fill="#adb5bd" font-size="8" text-anchor="middle" transform="rotate(-90,10,115)" font-family="monospace">азимут (°)</text>')
-    hl_ri, hl_ci = -1, -1
-    if highlight_az is not None and highlight_sp is not None:
-        hl_ri = int(highlight_az * nz / 360)
-        hl_ri = max(0, min(hl_ri, nz - 1))
-        hl_ci = int((highlight_sp - 10) * ns / 140)
-        hl_ci = max(0, min(hl_ci, ns - 1))
 
+    hl_ri, hl_ci = highlight_ri, highlight_ci
     for r in range(nz):
         for c in range(ns):
             color = _val_color(matrix[r, c], vmin, vmax, pal)
             parts.append(f'<rect x="{90 + c*cell_w:.2f}" y="{20 + r*cell_h:.2f}" width="{cell_w:.2f}" height="{cell_h:.2f}" fill="{color}"/>')
 
-    if hl_ri >= 0 and hl_ci >= 0:
+    if hl_ri is not None and hl_ci is not None and hl_ri >= 0 and hl_ci >= 0 and hl_ri < nz and hl_ci < ns:
         cx = 90 + hl_ci * cell_w + cell_w / 2
         cy = 20 + hl_ri * cell_h + cell_h / 2
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{max(cell_w, cell_h) * 0.7:.1f}" fill="none" stroke="#fff" stroke-width="2"/>')
@@ -312,9 +308,10 @@ def svg_eskf_error(errors: List[float], title: str, color: str = "#6ea8fe") -> s
     for i in range(5):
         y = 15 + ph * i / 4
         val = vmax - (vmax - vmin) * i / 4
-        parts.append(f'<text x="26" y="{y+3:.1f}" fill="#adb5bd" font-size="8" text-anchor="end" font-family="monospace">{val:.1f}</text>')
+        parts.append(f'<text x="26" y="{y+3:.1f}" fill="#adb5bd" font-size="8" text-anchor="end" font-family="monospace">{val:.0f}</text>')
     parts.append(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{color}" stroke-width="1.5" stroke-linejoin="round"/>')
     parts.append('<text x="250" y="232" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">шаг</text>')
+    parts.append('<text x="26" y="15" fill="#adb5bd" font-size="7" text-anchor="end" font-family="monospace">м</text>')
     return _svg_wrap("".join(parts), 240)
 
 

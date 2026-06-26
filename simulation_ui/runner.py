@@ -6,19 +6,18 @@ import numpy as np
 from gagarin.dem_loader import DEMLoader
 from gagarin.data_generator import DataGenerator, FlightParams
 from gagarin.pipeline import NavigationPipeline
-from gagarin.correlator import HypothesisSearch, CorrelationMetrics, MatchResult
-from gagarin.estimator import NavigationEstimate
+from gagarin.correlator import HypothesisSearch, CorrelationMetrics
 from gagarin.nmea_parser import NMEAParser
 from gagarin.profile import extract_terrain_profile
-from gagarin.preprocess import TerrainAnalyzer
+from gagarin.preprocess import TerrainAnalyzer, _latlon_distance_m, _adaptive_corridor_width
 from gagarin.config import Config
-from gagarin.quality import assess_match
+from gagarin.constants import EARTH_RADIUS
 from simulation_ui.texts import STEPS as STEP_TEXTS
 from simulation_ui.svg_generator import (
     svg_dem, svg_nmea, svg_buffer, svg_profile,
     svg_heatmap, svg_ncc_bar, svg_lag, svg_trajectory,
     svg_eskf_error, svg_quality, svg_result, svg_corridor,
-    svg_fingerprints,
+    svg_fingerprints, svg_empty,
 )
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -85,49 +84,7 @@ def _make_step(step_idx: int, svg: str, metrics: dict) -> Dict[str, Any]:
     }
 
 
-def _ensure_estimates(
-    best_fine, profile, ref_profile, center_lat, center_lon, cfg,
-) -> list:
-    if best_fine is None:
-        return []
-    dt = 1.0 / cfg.nmea_freq_hz
-    match = MatchResult(
-        azimuth_deg=best_fine.azimuth_deg,
-        speed_ms=best_fine.speed_ms,
-        correlation=best_fine.correlation,
-        lag_samples=0,
-        confidence=best_fine.correlation,
-        terrain_roughness=float(np.std(profile)),
-        reference_profile=ref_profile,
-        observed_profile=profile,
-    )
-    n_synth = max(3, cfg.flight_duration * cfg.nmea_freq_hz // cfg.window_size // 2)
-    az_rad = math.radians(best_fine.azimuth_deg)
-    cos_lat = math.cos(math.radians(center_lat))
-    estimates = []
-    for i in range(n_synth):
-        d = i * best_fine.speed_ms * dt * 9
-        dlat = d * math.cos(az_rad) / 6371000
-        dlon = d * math.sin(az_rad) / (6371000 * cos_lat)
-        noise_scale = 1.0 + 0.05 * np.random.randn()
-        est = NavigationEstimate(
-            azimuth_deg=best_fine.azimuth_deg * noise_scale,
-            speed_ms=best_fine.speed_ms * noise_scale,
-            position_lat=center_lat + math.degrees(dlat),
-            position_lon=center_lon + math.degrees(dlon),
-            correlation=best_fine.correlation * max(0.7, 1.0 - 0.02 * i),
-            confidence=best_fine.correlation * max(0.5, 1.0 - 0.03 * i),
-            lag_samples=0,
-            lag_distance_m=0.0,
-            terrain_roughness=float(np.std(profile)),
-            timestamp=float(i * 9 * dt),
-        )
-        est.quality = assess_match(match)
-        if est.quality["confidence"] < 0.3:
-            est.quality["quality"] = "marginal"
-            est.quality["confidence"] = max(0.35, est.quality["confidence"])
-        estimates.append(est)
-    return estimates
+
 
 
 def _generate_true_trajectory(center_lat, center_lon, params, n_points):
@@ -158,6 +115,7 @@ class SimulationRunner:
         cfg = Config.default()
         cfg.noise_std = 1.0
         cfg.flight_duration = self.flight_duration
+        cfg.baro_altitude = SCENARIOS[self.scenario_id]["baro_altitude"]
 
         dem = DEMLoader(self.dem_path)
         bounds = dem.bounds
@@ -183,6 +141,7 @@ class SimulationRunner:
         })
 
         analyzer = TerrainAnalyzer(dem)
+        std_map = analyzer.std_window(7)
         n_route = 20
         az_rad = params.azimuth_rad
         total_dist = params.speed_ms * params.duration_s
@@ -201,15 +160,21 @@ class SimulationRunner:
         std_vals, grad_vals = [], []
         for lat, lon in zip(route_lats, route_lons):
             try:
-                e = analyzer.elevation_at(lat, lon)
-                std_vals.append(float(np.std([e])))
+                ri = int((lat - bounds[1]) / (bounds[3] - bounds[1]) * (std_map.shape[0] - 1))
+                ci = int((lon - bounds[0]) / (bounds[2] - bounds[0]) * (std_map.shape[1] - 1))
+                ri = max(0, min(ri, std_map.shape[0] - 1))
+                ci = max(0, min(ci, std_map.shape[1] - 1))
+                std_vals.append(float(std_map[ri, ci]))
             except Exception:
                 std_vals.append(0.0)
-            ri = int((lat - bounds[1]) / (bounds[3] - bounds[1]) * (grad_map.shape[0] - 1))
-            ci = int((lon - bounds[0]) / (bounds[2] - bounds[0]) * (grad_map.shape[1] - 1))
-            ri = max(0, min(ri, grad_map.shape[0] - 1))
-            ci = max(0, min(ci, grad_map.shape[1] - 1))
-            grad_vals.append(float(grad_map[ri, ci]))
+            try:
+                ri = int((lat - bounds[1]) / (bounds[3] - bounds[1]) * (grad_map.shape[0] - 1))
+                ci = int((lon - bounds[0]) / (bounds[2] - bounds[0]) * (grad_map.shape[1] - 1))
+                ri = max(0, min(ri, grad_map.shape[0] - 1))
+                ci = max(0, min(ci, grad_map.shape[1] - 1))
+                grad_vals.append(float(grad_map[ri, ci]))
+            except Exception:
+                grad_vals.append(0.0)
 
         yield _make_step(1, svg_fingerprints(std_vals, grad_vals), {
             "mean_std": f"{float(np.mean(std_vals)):.1f}",
@@ -217,12 +182,12 @@ class SimulationRunner:
             "route_length_km": f"{total_dist / 1000:.1f}",
         })
 
-        ins_drift = 0.1
-        corridor_w = max(2 * ins_drift * total_dist + 2 * max(dem.resolution), 500.0)
+        max_seg = _latlon_distance_m(center_lat, center_lon, route_lats[-1], route_lons[-1])
+        corridor_w = _adaptive_corridor_width(max_seg, ins_drift_rate=0.1, dem_resolution_m=max(dem.resolution))
         yield _make_step(2, svg_corridor(corridor_w), {
             "corridor_width_m": f"{corridor_w:.0f}",
-            "ins_drift_rate": f"{ins_drift}",
-            "drift_at_end_m": f"{ins_drift * total_dist:.0f}",
+            "ins_drift_rate": "0.1",
+            "drift_at_end_m": f"{0.1 * total_dist:.0f}",
         })
 
         gen = DataGenerator(dem, cfg)
@@ -248,18 +213,12 @@ class SimulationRunner:
         })
 
         window_readings = all_readings[:window]
-        profile = extract_terrain_profile(window_readings, self.baro_altitude)
+        profile = extract_terrain_profile(window_readings, cfg.baro_altitude)
         if len(profile) < 5:
             profile = np.array([100.0] * window)
 
-        yield _make_step(5, svg_profile(profile, None), {
-            "profile_length": len(profile),
-            "profile_min_m": f"{float(np.min(profile)):.1f}",
-            "profile_max_m": f"{float(np.max(profile)):.1f}",
-            "profile_std_m": f"{float(np.std(profile)):.1f}",
-        })
-
         hs = HypothesisSearch(dem, cfg)
+
         n_az = int(360 / cfg.coarse_azimuth_step)
         n_sp = cfg.n_speed_hypotheses
         azimuths = np.arange(0, 360, cfg.coarse_azimuth_step)
@@ -277,7 +236,7 @@ class SimulationRunner:
         sp_labels = [f"{s:.0f}" for s in speeds]
         best_coarse = coarse_results[0] if coarse_results else None
 
-        yield _make_step(6, svg_heatmap(
+        yield _make_step(5, svg_heatmap(
             coarse_matrix, az_labels, sp_labels,
             "TERCOM Coarse — глобальный поиск 36×10",
             highlight_az=best_coarse.azimuth_deg if best_coarse else None,
@@ -294,6 +253,8 @@ class SimulationRunner:
 
         fine_azimuths = sorted(set(h.azimuth_deg for h in fine_results))
         fine_speeds = sorted(set(h.speed_ms for h in fine_results))
+        fine_az_labels = [f"{a:.1f}" for a in fine_azimuths]
+        fine_sp_labels = [f"{s:.0f}" for s in fine_speeds]
         if fine_azimuths and fine_speeds:
             fine_matrix = np.zeros((len(fine_azimuths), len(fine_speeds)))
             for h in fine_results:
@@ -301,17 +262,27 @@ class SimulationRunner:
                 ci = fine_speeds.index(h.speed_ms)
                 fine_matrix[ri, ci] = h.correlation
         else:
-            fine_matrix = coarse_matrix.copy()
-            fine_azimuths = az_labels
-            fine_speeds = sp_labels
+            fine_matrix = np.zeros((1, 1))
+            fine_az_labels = ["—"]
+            fine_sp_labels = ["—"]
 
-        yield _make_step(7, svg_heatmap(
+        best_fine_az = best_fine.azimuth_deg if best_fine else None
+        best_fine_sp = best_fine.speed_ms if best_fine else None
+        if best_fine_az is not None and best_fine_sp is not None and fine_azimuths and fine_speeds:
+            hl_ri = fine_azimuths.index(best_fine_az)
+            hl_ci = fine_speeds.index(best_fine_sp)
+        else:
+            hl_ri, hl_ci = None, None
+
+        yield _make_step(6, svg_heatmap(
             fine_matrix,
-            [f"{a:.1f}" for a in fine_azimuths],
-            [f"{s:.0f}" for s in fine_speeds],
+            fine_az_labels,
+            fine_sp_labels,
             "TERCOM Fine — локальная оптимизация",
-            highlight_az=best_fine.azimuth_deg if best_fine else None,
-            highlight_sp=best_fine.speed_ms if best_fine else None,
+            highlight_az=best_fine_az,
+            highlight_sp=best_fine_sp,
+            highlight_ri=hl_ri,
+            highlight_ci=hl_ci,
         ), {
             "fine_hypotheses": len(fine_results),
             "best_azimuth_fine": f"{best_fine.azimuth_deg:.1f}" if best_fine else "N/A",
@@ -319,7 +290,7 @@ class SimulationRunner:
             "best_corr_fine": f"{best_fine.correlation:.4f}" if best_fine else "N/A",
         })
 
-        yield _make_step(8, svg_ncc_bar(best_fine.correlation if best_fine else 0.0), {
+        yield _make_step(7, svg_ncc_bar(best_fine.correlation if best_fine else 0.0), {
             "ncc": f"{best_fine.correlation:.4f}" if best_fine else "N/A",
         })
 
@@ -328,14 +299,23 @@ class SimulationRunner:
             best_fine.azimuth_deg, best_fine.speed_ms,
             len(profile),
         ) if best_fine else profile.copy()
+
+        yield _make_step(8, svg_profile(profile, ref_profile), {
+            "profile_length": len(profile),
+            "profile_min_m": f"{float(np.min(profile)):.1f}",
+            "profile_max_m": f"{float(np.max(profile)):.1f}",
+            "profile_std_m": f"{float(np.std(profile)):.1f}",
+        })
+
         corr_full = CorrelationMetrics.cross_correlation(
             profile.astype(np.float64), ref_profile.astype(np.float64),
         )
         best_lag = int(np.argmax(np.abs(corr_full))) - len(profile) // 2
+        lag_speed = best_fine.speed_ms if best_fine else cfg.default_speed
 
         yield _make_step(9, svg_lag(corr_full, best_lag), {
             "best_lag_samples": best_lag,
-            "lag_distance_m": f"{best_lag * best_fine.speed_ms / cfg.nmea_freq_hz:.1f}" if best_fine else "N/A",
+            "lag_distance_m": f"{best_lag * lag_speed / cfg.nmea_freq_hz:.1f}" if best_fine else "N/A",
             "corr_peak": f"{float(np.max(np.abs(corr_full))):.4f}",
         })
 
@@ -350,7 +330,27 @@ class SimulationRunner:
         true_lats, true_lons = _generate_true_trajectory(center_lat, center_lon, params, len(nmea_lines))
 
         if len(estimates) < 2:
-            estimates = _ensure_estimates(best_fine, profile, ref_profile, center_lat, center_lon, cfg)
+            yield _make_step(10, svg_empty("Нет данных — TERCOM не нашёл совпадение"), {
+                "n_estimates": 0,
+                "true_azimuth": cfg.default_azimuth,
+                "true_speed": cfg.default_speed,
+                "n_estimates_total": 0,
+            })
+            yield _make_step(11, svg_empty("Нет данных — TERCOM не нашёл совпадение"), {
+                "kalman_enabled": cfg.kalman_enabled,
+                "mean_error_m": "N/A",
+                "total_estimates": 0,
+            })
+            yield _make_step(12, svg_empty("Нет данных — TERCOM не нашёт совпадение"), {
+                "quality": "unknown",
+                "confidence": "N/A",
+            })
+            yield _make_step(13, svg_result([], cfg.default_azimuth, cfg.default_speed), {
+                "total_estimates": 0,
+                "true_azimuth": cfg.default_azimuth,
+                "true_speed": cfg.default_speed,
+            })
+            return
 
         est_lats = [e.position_lat for e in estimates]
         est_lons = [e.position_lon for e in estimates]
@@ -361,20 +361,23 @@ class SimulationRunner:
             "n_estimates": len(estimates),
             "true_azimuth": cfg.default_azimuth,
             "true_speed": cfg.default_speed,
+            "n_estimates_total": len(estimates),
         })
 
         kf_errors = []
         for i in range(1, min(len(estimates), 30)):
             prev = estimates[i - 1]
             curr = estimates[i]
-            de = abs(curr.position_lat - prev.position_lat) + abs(curr.position_lon - prev.position_lon)
+            dlat = EARTH_RADIUS * math.radians(curr.position_lat - prev.position_lat)
+            dlon = EARTH_RADIUS * math.radians(curr.position_lon - prev.position_lon)
+            de = math.sqrt(dlat**2 + dlon**2)
             kf_errors.append(float(de))
         if len(kf_errors) < 5:
             kf_errors = [0.001 + 0.0001 * j for j in range(10)]
 
         yield _make_step(11, svg_eskf_error(kf_errors, "ESKF — сходимость ошибки позиции"), {
             "kalman_enabled": cfg.kalman_enabled,
-            "mean_error_deg": f"{float(np.mean(kf_errors)):.6f}",
+            "mean_error_m": f"{float(np.mean(kf_errors)):.1f}",
             "total_estimates": len(estimates),
         })
 
@@ -395,4 +398,5 @@ class SimulationRunner:
             "total_estimates": len(estimates),
             "true_azimuth": cfg.default_azimuth,
             "true_speed": cfg.default_speed,
+            "n_estimates_total": len(estimates),
         })
