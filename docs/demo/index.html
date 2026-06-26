@@ -49,22 +49,25 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 <body>
 
 <nav>
-<h2>TERCOM шаги</h2>
-<a href="#step0" class="active"><span class="nav-num">0</span>DEM — карта высот</a>
-<a href="#step1"><span class="nav-num">1</span>NMEA — радар</a>
-<a href="#step2"><span class="nav-num">2</span>Буфер — окно</a>
-<a href="#step3"><span class="nav-num">3</span>Профиль рельефа</a>
-<a href="#step4"><span class="nav-num">4</span>TERCOM Coarse</a>
-<a href="#step5"><span class="nav-num">5</span>TERCOM Fine</a>
-<a href="#step6"><span class="nav-num">6</span>NCC — сравнение</a>
-<a href="#step7"><span class="nav-num">7</span>Lag — сдвиг</a>
-<a href="#step8"><span class="nav-num">8</span>Dead Reckoning</a>
-<a href="#step9"><span class="nav-num">9</span>ESKF — фильтр</a>
-<a href="#step10"><span class="nav-num">10</span>Качество</a>
-<a href="#step11"><span class="nav-num">11</span>Pre-processing</a>
-<a href="#step12"><span class="nav-num">12</span>Адаптивный коридор</a>
-<a href="#step13"><span class="nav-num">13</span>Визуализация</a>
-<a href="#step14"><span class="nav-num">14</span>CLI — команды</a>
+<h2>ДО ПОЛЁТА</h2>
+<a href="#step-p1" class="active"><span class="nav-num">1</span>DEM — карта высот</a>
+<a href="#step-p2"><span class="nav-num">2</span>Pre-processing</a>
+<a href="#step-p3"><span class="nav-num">3</span>Адаптивный коридор</a>
+<h2>БОРТОВОЙ ЦИКЛ</h2>
+<a href="#step-b1"><span class="nav-num">1</span>NMEA — радар</a>
+<a href="#step-b2"><span class="nav-num">2</span>Буфер — окно</a>
+<a href="#step-b3"><span class="nav-num">3</span>Профиль рельефа</a>
+<a href="#step-b4"><span class="nav-num">4</span>TERCOM Coarse</a>
+<a href="#step-b5"><span class="nav-num">5</span>TERCOM Fine</a>
+<a href="#step-b6"><span class="nav-num">6</span>NCC — сравнение</a>
+<a href="#step-b7"><span class="nav-num">7</span>Lag — сдвиг</a>
+<a href="#step-b8"><span class="nav-num">8</span>Dead Reckoning</a>
+<a href="#step-b9"><span class="nav-num">9</span>ESKF — фильтр</a>
+<a href="#step-b10"><span class="nav-num">10</span>Качество</a>
+<h2>РЕЗУЛЬТАТЫ</h2>
+<a href="#step-r1"><span class="nav-num">1</span>Визуализация</a>
+<a href="#step-r2"><span class="nav-num">2</span>CLI — команды</a>
+<a href="#step-summary"><span class="nav-num">Σ</span>Полный цикл</a>
 </nav>
 
 <main>
@@ -75,13 +78,13 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 Как дрон определяет своё положение, сверяя показания радара с картой высот.</p>
 </div>
 
-<!-- Шаг 0: DEM -->
-<div class="step" id="step0">
+<!-- Шаг 1: DEM -->
+<div class="step" id="step-p1">
 <div class="step-header">
-<div class="step-number">0</div>
+<div class="step-number" style="background:var(--accent)">1</div>
 <div class="step-title">
 <h2>DEM — Цифровая Модель Рельефа</h2>
-<span class="phase">Основа всей системы</span>
+<span class="phase">Шаг 1 · До полёта</span>
 </div>
 </div>
 <div class="tags">
@@ -138,13 +141,108 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 </div>
 </div>
 
-<!-- Шаг 1: NMEA -->
-<div class="step" id="step1">
+<!-- Шаг 2: Pre-processing -->
+<div class="step" id="step-p2">
 <div class="step-header">
-<div class="step-number">1</div>
+<div class="step-number" style="background:var(--accent)">2</div>
+<div class="step-title">
+<h2>Pre-processing — Подготовка до полёта</h2>
+<span class="phase">Шаг 2 · До полёта</span>
+</div>
+</div>
+<div class="tags">
+<span class="tag lib">TerrainAnalyzer</span>
+<span class="tag lib">MissionPreprocessor</span>
+<span class="tag lib">SQLite (R-Tree)</span>
+<span class="tag lib">GeoTIFF</span>
+<span class="tag algo">Fingerprint</span>
+<span class="tag algo">Minima Ratio</span>
+</div>
+<div class="task">
+<b>Задача:</b> До вылета оценить маршрут на информативность. Для каждой точки вдоль маршрута построить fingerprint: эталонный профиль, NCC при смещении ±1..15 пикселей вбок, Minima Ratio. Результат — SQLite-база с R-Tree индексом + GeoTIFF информационной карты. Позволяет увидеть, какие участки безопасны для TERCOM, а какие — риск false fix.
+</div>
+<div class="why">
+<div class="why-item">
+<div class="why-icon">🗺️</div>
+<div class="why-text"><b>Знать до взлёта:</b> TERCOM на равнине даёт ложные совпадения. Pre-processing показывает это на карте ДО полёта, а не после.</div>
+</div>
+<div class="why-item">
+<div class="why-icon">📦</div>
+<div class="why-text"><b>SQLite + R-Tree:</b> Spatial index позволяет быстро искать fingerprint-ы по региону. Всё в одном файле — удобно грузить на дрон.</div>
+</div>
+</div>
+<div class="diagram">
+<svg viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(40,15)">
+<rect x="0" y="0" width="520" height="210" fill="#161b22" rx="8" stroke="#30363d"/>
+<circle cx="50" cy="180" r="6" fill="#3fb950"/><text x="50" y="200" fill="#3fb950" font-size="10" text-anchor="middle">WP1</text>
+<circle cx="120" cy="140" r="4" fill="#3fb950"/>
+<circle cx="180" cy="110" r="4" fill="#d29922"/>
+<circle cx="250" cy="100" r="4" fill="#d29922"/>
+<circle cx="320" cy="80" r="4" fill="#f85149"/><text x="320" y="73" fill="#f85149" font-size="10" text-anchor="middle">False fix risk</text>
+<circle cx="390" cy="60" r="4" fill="#3fb950"/>
+<circle cx="460" cy="40" r="6" fill="#3fb950"/><text x="460" y="32" fill="#3fb950" font-size="10" text-anchor="middle">WP6</text>
+<path d="M50,170 Q180,90 460,30" fill="none" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
+<path d="M50,190 Q180,130 460,50" fill="none" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
+<text x="50" y="170" fill="#58a6ff" font-size="10" opacity=".7">Коридор ~2 км</text>
+<polyline points="50,180 120,140 180,110 250,100 320,80 390,60 460,40" fill="none" stroke="#8b949e" stroke-width="2"/>
+</g>
+</svg>
+<div class="diagram-caption">Маршрут из 6 waypoints. Зелёные точки = профиль уникален (TERCOM надёжен). Красная = Minima Ratio &lt; 0.5 — риск false fix. Голубой пунктир = адаптивный коридор. Каждая точка — fingerprint с 12 NCC-метриками.</div>
+</div>
+</div>
+
+<!-- Шаг 3: Adaptive Corridor -->
+<div class="step" id="step-p3">
+<div class="step-header">
+<div class="step-number" style="background:var(--accent)">3</div>
+<div class="step-title">
+<h2>Адаптивный коридор</h2>
+<span class="phase">Шаг 3 · До полёта</span>
+</div>
+</div>
+<div class="tags">
+<span class="tag algo">ins_drift_rate</span>
+<span class="tag algo">dem_resolution</span>
+</div>
+<div class="task">
+<b>Задача:</b> Рассчитать оптимальную ширину коридора поиска для каждого сегмента маршрута. Формула: <code>width = max(2 × ins_drift_rate × segment_length + 2 × dem_resolution, 500 м)</code>. На 10 км сегменте с consumer INS → ~2 км vs фиксированные 10–15 км (в 5 раз уже).
+</div>
+<div class="why">
+<div class="why-item">
+<div class="why-icon">📐</div>
+<div class="why-text"><b>Почему адаптивный:</b> Фиксированный коридор 15 км на равнине — лишние вычисления. На сложном рельефе — недостаточный. Адаптивный подстраивается под реальную неопределённость INS.</div>
+</div>
+<div class="why-item">
+<div class="why-icon">⚡</div>
+<div class="why-text"><b>Экономия:</b> В 5× уже = в 5× меньше fingerprint-ов для предрасчёта. На 100 км маршруте: ~50 против ~250 точек.</div>
+</div>
+</div>
+<div class="diagram">
+<svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(40,20)">
+<rect x="0" y="0" width="520" height="150" fill="#161b22" rx="8" stroke="#30363d"/>
+<path d="M30,120 Q150,30 300,20 L300,50 Q150,60 30,140 Z" fill="rgba(248,81,73,.1)" stroke="#f85149" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="165" y="65" fill="#f85149" font-size="12" text-anchor="middle">Фиксированный коридор: 10–15 км</text>
+<path d="M30,110 Q150,40 300,30 L300,40 Q150,50 30,120 Z" fill="rgba(61,185,80,.15)" stroke="#3fb950" stroke-width="2"/>
+<text x="165" y="38" fill="#3fb950" font-size="12" text-anchor="middle">Адаптивный коридор: ~2 км</text>
+<polyline points="30,115 150,45 300,35" fill="none" stroke="#8b949e" stroke-width="2"/>
+<circle cx="30" cy="115" r="4" fill="#58a6ff"/>
+<circle cx="150" cy="45" r="4" fill="#58a6ff"/>
+<circle cx="300" cy="35" r="4" fill="#58a6ff"/>
+</g>
+</svg>
+<div class="diagram-caption">Красный — фиксированный коридор (10 км). Зелёный — адаптивный (~2 км). Формула: <code>2 × ins_drift_rate × segment_length + 2 × dem_resolution</code>. INS дрейфует на 10% пройденного пути → на 10 км сегменте коридор ~2 км + запас.</div>
+</div>
+</div>
+
+<!-- Шаг 1: NMEA -->
+<div class="step" id="step-b1">
+<div class="step-header">
+<div class="step-number" style="background:var(--green)">1</div>
 <div class="step-title">
 <h2>NMEA — Протокол радиовысотомера</h2>
-<span class="phase">Бортовой цикл · Получение данных</span>
+<span class="phase">Шаг 1 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -183,12 +281,12 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 </div>
 
 <!-- Шаг 2: Buffer -->
-<div class="step" id="step2">
+<div class="step" id="step-b2">
 <div class="step-header">
-<div class="step-number">2</div>
+<div class="step-number" style="background:var(--green)">2</div>
 <div class="step-title">
 <h2>Буферизация — Скользящее окно</h2>
-<span class="phase">Бортовой цикл · Накопление</span>
+<span class="phase">Шаг 2 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -250,12 +348,12 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 </div>
 
 <!-- Шаг 3: Profile -->
-<div class="step" id="step3">
+<div class="step" id="step-b3">
 <div class="step-header">
-<div class="step-number">3</div>
+<div class="step-number" style="background:var(--green)">3</div>
 <div class="step-title">
 <h2>Профиль рельефа — От радара к высоте</h2>
-<span class="phase">Бортовой цикл · Преобразование</span>
+<span class="phase">Шаг 3 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -301,12 +399,12 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 </div>
 
 <!-- Шаг 4: TERCOM Coarse -->
-<div class="step" id="step4">
+<div class="step" id="step-b4">
 <div class="step-header">
-<div class="step-number">4</div>
+<div class="step-number" style="background:var(--green)">4</div>
 <div class="step-title">
 <h2>TERCOM — Грубый поиск (Coarse)</h2>
-<span class="phase">Бортовой цикл · Поиск</span>
+<span class="phase">Шаг 4 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -366,12 +464,12 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 </div>
 
 <!-- Шаг 5: TERCOM Fine -->
-<div class="step" id="step5">
+<div class="step" id="step-b5">
 <div class="step-header">
-<div class="step-number">5</div>
+<div class="step-number" style="background:var(--green)">5</div>
 <div class="step-title">
 <h2>TERCOM — Точный поиск (Fine)</h2>
-<span class="phase">Бортовой цикл · Уточнение</span>
+<span class="phase">Шаг 5 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -433,12 +531,12 @@ footer{text-align:center;padding:40px 0;color:var(--fg2);font-size:13px;border-t
 </div>
 
 <!-- Шаг 6: NCC -->
-<div class="step" id="step6">
+<div class="step" id="step-b6">
 <div class="step-header">
-<div class="step-number">6</div>
+<div class="step-number" style="background:var(--green)">6</div>
 <div class="step-title">
 <h2>NCC — Сравнение профилей</h2>
-<span class="phase">Бортовой цикл · Метрика</span>
+<span class="phase">Шаг 6 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -490,12 +588,12 @@ fill="none" stroke="#d29922" stroke-width="2.5" stroke-dasharray="5,3" opacity="
 </div>
 
 <!-- Шаг 7: Lag -->
-<div class="step" id="step7">
+<div class="step" id="step-b7">
 <div class="step-header">
-<div class="step-number">7</div>
+<div class="step-number" style="background:var(--green)">7</div>
 <div class="step-title">
 <h2>Lag — Коррекция временного сдвига</h2>
-<span class="phase">Бортовой цикл · Синхронизация</span>
+<span class="phase">Шаг 7 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -552,12 +650,12 @@ fill="none" stroke="#bc8cff" stroke-width="2.5"/>
 </div>
 
 <!-- Шаг 8: Dead Reckoning -->
-<div class="step" id="step8">
+<div class="step" id="step-b8">
 <div class="step-header">
-<div class="step-number">8</div>
+<div class="step-number" style="background:var(--green)">8</div>
 <div class="step-title">
 <h2>Dead Reckoning — Счисление пути</h2>
-<span class="phase">Бортовой цикл · Движение</span>
+<span class="phase">Шаг 8 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -603,12 +701,12 @@ fill="none" stroke="#bc8cff" stroke-width="2.5"/>
 </div>
 
 <!-- Шаг 9: ESKF -->
-<div class="step" id="step9">
+<div class="step" id="step-b9">
 <div class="step-header">
-<div class="step-number">9</div>
+<div class="step-number" style="background:var(--green)">9</div>
 <div class="step-title">
 <h2>ESKF — Error-State Kalman Filter</h2>
-<span class="phase">Бортовой цикл · Фильтрация</span>
+<span class="phase">Шаг 9 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -652,12 +750,12 @@ fill="none" stroke="#3fb950" stroke-width="3"/>
 </div>
 
 <!-- Шаг 10: Quality -->
-<div class="step" id="step10">
+<div class="step" id="step-b10">
 <div class="step-header">
-<div class="step-number">10</div>
+<div class="step-number" style="background:var(--green)">10</div>
 <div class="step-title">
 <h2>Quality — Оценка качества</h2>
-<span class="phase">Бортовой цикл · Валидация</span>
+<span class="phase">Шаг 10 · Бортовой цикл</span>
 </div>
 </div>
 <div class="tags">
@@ -707,115 +805,13 @@ fill="none" stroke="#3fb950" stroke-width="3"/>
 </div>
 </div>
 
-<!-- Шаг 11: Pre-processing -->
-<div class="step" id="step11">
+<!-- Шаг 1: Viz -->
+<div class="step" id="step-r1">
 <div class="step-header">
-<div class="step-number">11</div>
-<div class="step-title">
-<h2>Pre-processing — Подготовка до полёта</h2>
-<span class="phase">Наземная станция · Планирование</span>
-</div>
-</div>
-<div class="tags">
-<span class="tag lib">TerrainAnalyzer</span>
-<span class="tag lib">MissionPreprocessor</span>
-<span class="tag lib">SQLite (R-Tree)</span>
-<span class="tag lib">GeoTIFF</span>
-<span class="tag algo">Fingerprint</span>
-<span class="tag algo">Minima Ratio</span>
-</div>
-<div class="task">
-<b>Задача:</b> До вылета оценить маршрут на информативность. Для каждой точки вдоль маршрута построить fingerprint: эталонный профиль, NCC при смещении ±1..15 пикселей вбок, Minima Ratio. Результат — SQLite-база с R-Tree индексом + GeoTIFF информационной карты. Позволяет увидеть, какие участки безопасны для TERCOM, а какие — риск false fix.
-</div>
-<div class="why">
-<div class="why-item">
-<div class="why-icon">🗺️</div>
-<div class="why-text"><b>Знать до взлёта:</b> TERCOM на равнине даёт ложные совпадения. Pre-processing показывает это на карте ДО полёта, а не после.</div>
-</div>
-<div class="why-item">
-<div class="why-icon">📦</div>
-<div class="why-text"><b>SQLite + R-Tree:</b> Spatial index позволяет быстро искать fingerprint-ы по региону. Всё в одном файле — удобно грузить на дрон.</div>
-</div>
-</div>
-<div class="diagram">
-<svg viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg">
-<g transform="translate(40,15)">
-<rect x="0" y="0" width="520" height="210" fill="#161b22" rx="8" stroke="#30363d"/>
-<!-- Route line -->
-<polyline points="50,180 120,140 180,110 250,100 320,80 390,60 460,40"
-fill="none" stroke="#8b949e" stroke-width="2"/>
-<!-- Waypoint dots -->
-<circle cx="50" cy="180" r="6" fill="#3fb950"/><text x="50" y="200" fill="#3fb950" font-size="10" text-anchor="middle">WP1</text>
-<circle cx="120" cy="140" r="4" fill="#3fb950"/>
-<circle cx="180" cy="110" r="4" fill="#d29922"/>
-<circle cx="250" cy="100" r="4" fill="#d29922"/>
-<circle cx="320" cy="80" r="4" fill="#f85149"/><text x="320" y="73" fill="#f85149" font-size="10" text-anchor="middle">False fix risk</text>
-<circle cx="390" cy="60" r="4" fill="#3fb950"/>
-<circle cx="460" cy="40" r="6" fill="#3fb950"/><text x="460" y="32" fill="#3fb950" font-size="10" text-anchor="middle">WP6</text>
-<!-- Corridor -->
-<path d="M50,170 Q180,90 460,30" fill="none" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
-<path d="M50,190 Q180,130 460,50" fill="none" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
-<text x="50" y="170" fill="#58a6ff" font-size="10" opacity=".7">Коридор ~2 км</text>
-</g>
-</svg>
-<div class="diagram-caption">Маршрут из 6 waypoints. Зелёные точки = профиль уникален (TERCOM надёжен). Красная = Minima Ratio &lt; 0.5 — риск false fix. Голубой пунктир = адаптивный коридор. Каждая точка — fingerprint с 12 NCC-метриками.</div>
-</div>
-</div>
-
-<!-- Шаг 12: Adaptive Corridor -->
-<div class="step" id="step12">
-<div class="step-header">
-<div class="step-number">12</div>
-<div class="step-title">
-<h2>Адаптивный коридор</h2>
-<span class="phase">Наземная станция · Оптимизация</span>
-</div>
-</div>
-<div class="tags">
-<span class="tag algo">ins_drift_rate</span>
-<span class="tag algo">dem_resolution</span>
-</div>
-<div class="task">
-<b>Задача:</b> Рассчитать оптимальную ширину коридора поиска для каждого сегмента маршрута. Формула: <code>width = max(2 × ins_drift_rate × segment_length + 2 × dem_resolution, 500 м)</code>. На 10 км сегменте с consumer INS → ~2 км vs фиксированные 10–15 км (в 5 раз уже).
-</div>
-<div class="why">
-<div class="why-item">
-<div class="why-icon">📐</div>
-<div class="why-text"><b>Почему адаптивный:</b> Фиксированный коридор 15 км на равнине — лишние вычисления. На сложном рельефе — недостаточный. Адаптивный подстраивается под реальную неопределённость INS.</div>
-</div>
-<div class="why-item">
-<div class="why-icon">⚡</div>
-<div class="why-text"><b>Экономия:</b> В 5× уже = в 5× меньше fingerprint-ов для предрасчёта. На 100 км маршруте: ~50 против ~250 точек.</div>
-</div>
-</div>
-<div class="diagram">
-<svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
-<g transform="translate(40,20)">
-<rect x="0" y="0" width="520" height="150" fill="#161b22" rx="8" stroke="#30363d"/>
-<!-- Fixed corridor -->
-<path d="M30,120 Q150,30 300,20 L300,50 Q150,60 30,140 Z" fill="rgba(248,81,73,.1)" stroke="#f85149" stroke-width="1.5" stroke-dasharray="6,3"/>
-<text x="165" y="65" fill="#f85149" font-size="12" text-anchor="middle">Фиксированный коридор: 10–15 км</text>
-<!-- Adaptive corridor -->
-<path d="M30,110 Q150,40 300,30 L300,40 Q150,50 30,120 Z" fill="rgba(61,185,80,.15)" stroke="#3fb950" stroke-width="2"/>
-<text x="165" y="38" fill="#3fb950" font-size="12" text-anchor="middle">Адаптивный коридор: ~2 км</text>
-<!-- Route -->
-<polyline points="30,115 150,45 300,35" fill="none" stroke="#8b949e" stroke-width="2"/>
-<circle cx="30" cy="115" r="4" fill="#58a6ff"/>
-<circle cx="150" cy="45" r="4" fill="#58a6ff"/>
-<circle cx="300" cy="35" r="4" fill="#58a6ff"/>
-</g>
-</svg>
-<div class="diagram-caption">Красный — фиксированный коридор (10 км). Зелёный — адаптивный (~2 км). Формула: <code>2 × ins_drift_rate × segment_length + 2 × dem_resolution</code>. INS дрейфует на 10% пройденного пути → на 10 км сегменте коридор ~2 км + запас.</div>
-</div>
-</div>
-
-<!-- Шаг 13: Viz -->
-<div class="step" id="step13">
-<div class="step-header">
-<div class="step-number">13</div>
+<div class="step-number" style="background:var(--purple)">1</div>
 <div class="step-title">
 <h2>Визуализация — Plotly HTML</h2>
-<span class="phase">Результаты · Графика</span>
+<span class="phase">Шаг 1 · Результаты</span>
 </div>
 </div>
 <div class="tags">
@@ -892,13 +888,13 @@ fill="none" stroke="#58a6ff" stroke-width="1.5"/>
 </div>
 </div>
 
-<!-- Шаг 14: CLI -->
-<div class="step" id="step14">
+<!-- Шаг 2: CLI -->
+<div class="step" id="step-r2">
 <div class="step-header">
-<div class="step-number">14</div>
+<div class="step-number" style="background:var(--purple)">2</div>
 <div class="step-title">
 <h2>CLI — Интерфейс командной строки</h2>
-<span class="phase">Инструмент · Управление</span>
+<span class="phase">Шаг 2 · Результаты</span>
 </div>
 </div>
 <div class="tags">
@@ -940,7 +936,7 @@ fill="none" stroke="#58a6ff" stroke-width="1.5"/>
 </div>
 
 <!-- Сводная схема -->
-<div class="step" style="border-color:var(--accent)">
+<div class="step" id="step-summary" style="border-color:var(--accent)">
 <div class="step-header">
 <div class="step-number" style="background:var(--green)">Σ</div>
 <div class="step-title">
