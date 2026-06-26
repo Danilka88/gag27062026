@@ -189,7 +189,7 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
             "<sup style='font-size:10px;color:gray'>"
             "NCC для азимут×скорость; ☆ — лучшее совпадение</sup>",
         ),
-        vertical_spacing=0.05,
+        vertical_spacing=0.08,
     )
 
     idx_groups = {k: [] for k in (
@@ -297,7 +297,7 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
         )
 
     fig.add_annotation(
-        x=0.5, y=1.0, xref="paper", yref="paper",
+        x=0.5, y=0.02, xref="paper", yref="paper",
         text="<br>".join([
             _summary_line("Synthetic", syn),
             _summary_line("Dramatic", dram),
@@ -308,15 +308,59 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
         bgcolor="rgba(0,0,0,0.7)",
         bordercolor="gray",
         borderwidth=1,
-        yshift=10,
     )
+
+    scene_caption = (
+        "Это 3D-карта местности, по которой летит дрон. "
+        "<b>Красная линия</b> — реальный путь (по GPS). "
+        "<b>Зелёная</b> — где алгоритм думает, что дрон находится. "
+        "<b>Жёлтая</b> — уточнённая оценка после фильтра. "
+        "Если линии совпадают — навигация точная."
+    )
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.5, y=0.74,
+        text=scene_caption,
+        showarrow=False,
+        font=dict(size=10, color="gray"),
+        align="center",
+    )
+
+    xy_captions = [
+        (2, "Срез высот под дроном за один проход. "
+            "<b>Голубая линия</b> — что измерил радар. "
+            "<b>Оранжевая</b> — что ожидалось по карте высот (DEM). "
+            "Чем ближе линии друг к другу — тем точнее алгоритм определил место."),
+        (3, "Как менялась уверенность алгоритма со временем. "
+            "<b>Зелёная линия</b> — корреляция (1 = профили идеально совпадают). "
+            "<b>Оранжевая</b> — доверие к оценке. "
+            "Если обе линии высоко — ответу можно верить."),
+        (4, "Насколько алгоритм ошибается в своих оценках. "
+            "<b>Розовая линия</b> — ошибка по направлению (градусы от истины). "
+            "<b>Голубая</b> — ошибка по скорости. "
+            "Чем ближе к нулю — тем точнее навигация."),
+        (5, "Результат сканирования — алгоритм перебирает все варианты "
+            "направления и скорости. <b>Яркие участки</b> — хорошие совпадения. "
+            "<b>Звезда (★)</b> — лучшее совпадение. "
+            "Чем ярче и компактнее пятно — тем увереннее ответ."),
+    ]
+    for row, text in xy_captions:
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=0.5, y=-0.35,
+            text=text,
+            showarrow=False,
+            font=dict(size=10, color="gray"),
+            align="center",
+            row=row, col=1,
+        )
 
     fig.update_layout(
         title="TERCOM Навигация — Synthetic vs Dramatic",
-        height=2500,
+        height=2800,
         template=TEMPLATE,
         showlegend=True,
-        legend=dict(x=1.02, y=1, xanchor="left"),
+        legend=dict(x=1.02, y=0.98, xanchor="left"),
         updatemenus=updatemenus,
     )
 
