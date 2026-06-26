@@ -164,17 +164,16 @@ def navigation_dashboard(data: DashboardData) -> go.Figure:
 
 def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
     fig = make_subplots(
-        rows=3, cols=2,
+        rows=5, cols=1,
         specs=[
-            [{"type": "scene"}, {"type": "scene"}],
-            [{"type": "xy"}, {"type": "xy"}],
-            [{"type": "xy"}, {"type": "xy"}],
+            [{"type": "scene"}],
+            [{"type": "xy"}],
+            [{"type": "xy"}],
+            [{"type": "xy"}],
+            [{"type": "xy"}],
         ],
         subplot_titles=(
-            "Synthetic — Рельеф и траектория<br>"
-            "<sup style='font-size:10px;color:gray'>"
-            "Красный — истинный трек; Зелёный — TERCOM; Жёлтый — ESKF</sup>",
-            "Dramatic — Рельеф и траектория<br>"
+            "Рельеф и траектория<br>"
             "<sup style='font-size:10px;color:gray'>"
             "Красный — истинный трек; Зелёный — TERCOM; Жёлтый — ESKF</sup>",
             "Профиль рельефа<br>"
@@ -190,8 +189,7 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
             "<sup style='font-size:10px;color:gray'>"
             "NCC для азимут×скорость; ☆ — лучшее совпадение</sup>",
         ),
-        vertical_spacing=0.13,
-        horizontal_spacing=0.08,
+        vertical_spacing=0.05,
     )
 
     idx_groups = {k: [] for k in (
@@ -210,50 +208,49 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
             idx_groups[group].append(len(fig.data) - 1)
 
     _add("Synthetic", terrain_traces(syn.terrain, syn.trajectory, syn.estimates), 'syn_terrain', row=1, col=1)
-    _add("Dramatic", terrain_traces(dram.terrain, dram.trajectory, dram.estimates), 'dram_terrain', row=1, col=2)
+    _add("Dramatic", terrain_traces(dram.terrain, dram.trajectory, dram.estimates), 'dram_terrain', row=1, col=1)
 
     _add("Synthetic", profile_traces(syn.profile), 'syn_profile', row=2, col=1)
     _add("Dramatic", profile_traces(dram.profile), 'dram_profile', row=2, col=1)
 
-    _add("Synthetic", timeline_traces(syn.estimates), 'syn_timeline', row=2, col=2)
-    _add("Dramatic", timeline_traces(dram.estimates), 'dram_timeline', row=2, col=2)
+    _add("Synthetic", timeline_traces(syn.estimates), 'syn_timeline', row=3, col=1)
+    _add("Dramatic", timeline_traces(dram.estimates), 'dram_timeline', row=3, col=1)
 
-    _add("Synthetic", error_traces(syn.errors), 'syn_error', row=3, col=1)
-    _add("Dramatic", error_traces(dram.errors), 'dram_error', row=3, col=1)
+    _add("Synthetic", error_traces(syn.errors), 'syn_error', row=4, col=1)
+    _add("Dramatic", error_traces(dram.errors), 'dram_error', row=4, col=1)
 
     corr_best_az_syn = syn.correlation.best_azimuth()
     corr_best_sp_syn = syn.correlation.best_speed()
-    _add("Synthetic", correlation_heatmap_trace(syn.correlation, corr_best_az_syn, corr_best_sp_syn), 'syn_heatmap', row=3, col=2)
+    _add("Synthetic", correlation_heatmap_trace(syn.correlation, corr_best_az_syn, corr_best_sp_syn), 'syn_heatmap', row=5, col=1)
 
     corr_best_az_dram = dram.correlation.best_azimuth()
     corr_best_sp_dram = dram.correlation.best_speed()
-    _add("Dramatic", correlation_heatmap_trace(dram.correlation, corr_best_az_dram, corr_best_sp_dram), 'dram_heatmap', row=3, col=2)
+    _add("Dramatic", correlation_heatmap_trace(dram.correlation, corr_best_az_dram, corr_best_sp_dram), 'dram_heatmap', row=5, col=1)
 
-    for scene_row, scene_col in [(1, 1), (1, 2)]:
-        fig.update_scenes(
-            aspectmode="manual",
-            aspectratio=dict(x=1, y=1, z=0.4),
-            camera=dict(eye=dict(x=1.5, y=1.5, z=0.8)),
-            xaxis_title="Долгота",
-            yaxis_title="Широта",
-            zaxis_title="Высота (м)",
-            row=scene_row, col=scene_col,
-        )
+    fig.update_scenes(
+        aspectmode="manual",
+        aspectratio=dict(x=1, y=1, z=0.4),
+        camera=dict(eye=dict(x=1.5, y=1.5, z=0.8)),
+        xaxis_title="Долгота",
+        yaxis_title="Широта",
+        zaxis_title="Высота (м)",
+        row=1, col=1,
+    )
 
     fig.update_xaxes(title_text="Отсчёт", row=2, col=1)
     fig.update_yaxes(title_text="Высота (м)", row=2, col=1)
-    fig.update_xaxes(title_text="Номер оценки", row=2, col=2)
-    fig.update_yaxes(title_text="Значение", row=2, col=2)
     fig.update_xaxes(title_text="Номер оценки", row=3, col=1)
-    fig.update_yaxes(title_text="Ошибка азимута (°)", row=3, col=1)
+    fig.update_yaxes(title_text="Значение", row=3, col=1)
+    fig.update_xaxes(title_text="Номер оценки", row=4, col=1)
+    fig.update_yaxes(title_text="Ошибка азимута (°)", row=4, col=1)
     fig.update_yaxes(
         title_text="Ошибка скорости (м/с)",
         overlaying="y",
         side="right",
-        row=3, col=1,
+        row=4, col=1,
     )
-    fig.update_xaxes(title_text="Азимут (°)", row=3, col=2)
-    fig.update_yaxes(title_text="Скорость (м/с)", row=3, col=2)
+    fig.update_xaxes(title_text="Азимут (°)", row=5, col=1)
+    fig.update_yaxes(title_text="Скорость (м/с)", row=5, col=1)
 
     n = len(fig.data)
 
@@ -266,13 +263,6 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
 
     syn_vis = _vis('syn_terrain', 'syn_profile', 'syn_timeline', 'syn_error', 'syn_heatmap')
     dram_vis = _vis('dram_terrain', 'dram_profile', 'dram_timeline', 'dram_error', 'dram_heatmap')
-    cmp_vis = _vis(
-        'syn_terrain', 'dram_terrain',
-        'syn_profile', 'dram_profile',
-        'syn_timeline', 'dram_timeline',
-        'syn_error', 'dram_error',
-        'syn_heatmap',
-    )
 
     updatemenus = [
         dict(
@@ -286,9 +276,6 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
                 dict(label="Dramatic", method="update",
                      args=[{"visible": dram_vis},
                            {"title": "TERCOM Навигация — Dramatic DEM"}]),
-                dict(label="Сравнение", method="update",
-                     args=[{"visible": cmp_vis},
-                           {"title": "TERCOM Навигация — Synthetic vs Dramatic"}]),
             ],
         ),
     ]
@@ -326,7 +313,7 @@ def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
 
     fig.update_layout(
         title="TERCOM Навигация — Synthetic vs Dramatic",
-        height=1100,
+        height=2500,
         template=TEMPLATE,
         showlegend=True,
         legend=dict(x=1.02, y=1, xanchor="left"),

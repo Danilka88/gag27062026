@@ -151,7 +151,7 @@ def run(config_path: str, compare: bool):
 
     if compare and "synthetic" in all_data and "dramatic" in all_data:
         click.echo("\n" + "=" * 60)
-        click.echo("Generating unified dashboard (Synthetic / Dramatic / Сравнение)...")
+        click.echo("Generating unified dashboard (Synthetic / Dramatic)...")
         click.echo("=" * 60)
 
         syn = all_data["synthetic"]
