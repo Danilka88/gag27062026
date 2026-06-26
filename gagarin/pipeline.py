@@ -68,26 +68,14 @@ class NavigationPipeline:
         if len(self.buffer) > self.config.window_size:
             self.buffer.popleft()
 
-        if not self.is_initialized:
-            return None
-
-        if len(self.buffer) < self.config.window_size:
+        if not self._buffer_ready():
             return None
 
         if self.config.adaptive_sampling:
-            dt = 1.0 / self.config.nmea_freq_hz
-            if len(self.readings) >= 2:
-                prev = self.readings[-2]
-                dist_estimate = 50.0
-                self.total_distance += dist_estimate
+            if not self._check_adaptive_distance():
+                return None
 
-                if self.total_distance - self.last_distance_trigger < self.config.adaptive_min_distance_m:
-                    return None
-                self.last_distance_trigger = self.total_distance
-
-        profile = extract_terrain_profile(
-            list(self.buffer), self.config.baro_altitude
-        )
+        profile = extract_terrain_profile(list(self.buffer), self.config.baro_altitude)
         if len(profile) < 5:
             return None
 
@@ -97,47 +85,68 @@ class NavigationPipeline:
 
         self.last_result = match
         estimate = self.estimator.estimate(match, self.center_lat, self.center_lon)
-
-        az_rad = np.radians(estimate["azimuth_deg"])
-        speed = estimate["speed_ms"]
-        vx = speed * np.sin(az_rad)
-        vy = speed * np.cos(az_rad)
-
-        dt_center = 1.0 / self.config.nmea_freq_hz
-        cos_lat = np.cos(np.radians(estimate["position_lat"]))
-
-        dr_dlat = speed * np.cos(az_rad) * dt_center / EARTH_RADIUS
-        dr_dlon = speed * np.sin(az_rad) * dt_center / (EARTH_RADIUS * cos_lat)
-
-        lag_m = estimate["lag_distance_m"]
-        corr_dlat = lag_m * np.cos(az_rad) / EARTH_RADIUS
-        corr_dlon = lag_m * np.sin(az_rad) / (EARTH_RADIUS * cos_lat)
-
-        self.center_lat += np.degrees(dr_dlat + corr_dlat)
-        self.center_lon += np.degrees(dr_dlon + corr_dlon)
-
-        if self.kf:
-            self.kf.predict()
-            self.kf.update_position(estimate["position_lat"], estimate["position_lon"])
-            self.kf.update_velocity(vx, vy)
-            self.kf.reset()
-            kf_state = self.kf.get_state()
-            estimate["filtered_lat"] = kf_state["lat"]
-            estimate["filtered_lon"] = kf_state["lon"]
-            estimate["filtered_speed_ms"] = kf_state["speed_ms"]
-            self.center_lat = kf_state["lat"]
-            self.center_lon = kf_state["lon"]
+        self._update_center(estimate)
+        self._apply_kalman(estimate)
 
         quality = assess_match(match)
         estimate["quality"] = quality
         estimate["timestamp"] = reading.timestamp
-
         self.last_estimate = estimate
 
         if self.on_update:
             self.on_update(estimate)
 
         return estimate
+
+    def _buffer_ready(self) -> bool:
+        if not self.is_initialized:
+            return False
+        return len(self.buffer) >= self.config.window_size
+
+    def _check_adaptive_distance(self) -> bool:
+        if len(self.readings) < 2:
+            return True
+        dist_estimate = 50.0
+        self.total_distance += dist_estimate
+        if self.total_distance - self.last_distance_trigger < self.config.adaptive_min_distance_m:
+            return False
+        self.last_distance_trigger = self.total_distance
+        return True
+
+    def _update_center(self, estimate: dict):
+        az_rad = np.radians(estimate["azimuth_deg"])
+        speed = estimate["speed_ms"]
+        dt_center = 1.0 / self.config.nmea_freq_hz
+        cos_lat = np.cos(np.radians(estimate["position_lat"]))
+
+        dr_lat = speed * np.cos(az_rad) * dt_center / EARTH_RADIUS
+        dr_lon = speed * np.sin(az_rad) * dt_center / (EARTH_RADIUS * cos_lat)
+
+        lag_m = estimate["lag_distance_m"]
+        corr_lat = lag_m * np.cos(az_rad) / EARTH_RADIUS
+        corr_lon = lag_m * np.sin(az_rad) / (EARTH_RADIUS * cos_lat)
+
+        self.center_lat += np.degrees(dr_lat + corr_lat)
+        self.center_lon += np.degrees(dr_lon + corr_lon)
+
+    def _apply_kalman(self, estimate: dict):
+        if not self.kf:
+            return
+        az_rad = np.radians(estimate["azimuth_deg"])
+        speed = estimate["speed_ms"]
+        vx = speed * np.sin(az_rad)
+        vy = speed * np.cos(az_rad)
+
+        self.kf.predict()
+        self.kf.update_position(estimate["position_lat"], estimate["position_lon"])
+        self.kf.update_velocity(vx, vy)
+        self.kf.reset()
+        kf_state = self.kf.get_state()
+        estimate["filtered_lat"] = kf_state["lat"]
+        estimate["filtered_lon"] = kf_state["lon"]
+        estimate["filtered_speed_ms"] = kf_state["speed_ms"]
+        self.center_lat = kf_state["lat"]
+        self.center_lon = kf_state["lon"]
 
     def feed_file(self, path: str) -> List[dict]:
         results = []

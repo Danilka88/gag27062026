@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import time
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 import click
 
@@ -182,6 +182,59 @@ def _load_config(path: str) -> Config:
     return cfg
 
 
+def _generate_trajectory(params: FlightParams, cfg: Config) -> Tuple[np.ndarray, np.ndarray]:
+    dt = 1.0 / cfg.nmea_freq_hz
+    n = int(params.duration_s * cfg.nmea_freq_hz)
+    lats, lons = np.empty(n), np.empty(n)
+    for i in range(n):
+        dist = i * params.speed_ms * dt
+        lats[i], lons[i] = offset_coords(
+            params.start_lat, params.start_lon, dist, params.azimuth_rad
+        )
+    return lats, lons
+
+
+def _build_correlation_matrix(
+    dem: DEMLoader, cfg: Config,
+    pipeline: NavigationPipeline = None,
+    gen: DataGenerator = None,
+    params: FlightParams = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    n_az = int(360 / cfg.coarse_azimuth_step)
+    n_sp = cfg.n_speed_hypotheses
+    azimuths = np.arange(0, 360, cfg.coarse_azimuth_step)
+    speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], n_sp)
+    corr = TERCOMCorrelator(dem, cfg)
+    center_lat = (dem.bounds[1] + dem.bounds[3]) / 2
+    center_lon = (dem.bounds[0] + dem.bounds[2]) / 2
+
+    corr_matrix = np.zeros((n_az, n_sp))
+    obs_profile = np.array([])
+    ref_profile = np.array([])
+
+    if pipeline and pipeline.last_result is not None:
+        obs_profile = pipeline.last_result.observed_profile
+        ref_profile = pipeline.last_result.reference_profile
+        for i, az in enumerate(azimuths):
+            for j, sp in enumerate(speeds):
+                ref = corr._build_reference_profile(center_lat, center_lon, az, sp, len(obs_profile))
+                if len(ref) == len(obs_profile) and np.std(ref) >= 1.0:
+                    corr_matrix[i, j] = corr._ncc(obs_profile, ref)
+
+    elif gen and params:
+        gen.rng = np.random.default_rng(cfg.seed)
+        radar_alts = gen.generate_profile(params, noise_std=cfg.noise_std)
+        if len(radar_alts) >= cfg.window_size:
+            obs_profile = cfg.baro_altitude - radar_alts[:cfg.window_size]
+            for i, az in enumerate(azimuths):
+                for j, sp in enumerate(speeds):
+                    ref = corr._build_reference_profile(center_lat, center_lon, az, sp, cfg.window_size)
+                    if len(ref) == cfg.window_size and np.std(ref) >= 1.0:
+                        corr_matrix[i, j] = corr._ncc(obs_profile, ref)
+
+    return corr_matrix, obs_profile, ref_profile
+
+
 def _generate_visualizations(
     dem: DEMLoader,
     results: list,
@@ -198,43 +251,12 @@ def _generate_visualizations(
     azimuths = np.arange(0, 360, cfg.coarse_azimuth_step)
     speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], n_sp)
 
-    traj_lats, traj_lons = [], []
-    dt = 1.0 / cfg.nmea_freq_hz
-    for i in range(int(params.duration_s * cfg.nmea_freq_hz)):
-        dist = i * params.speed_ms * dt
-        lat, lon = offset_coords(
-            params.start_lat, params.start_lon, dist, params.azimuth_rad
-        )
-        traj_lats.append(lat)
-        traj_lons.append(lon)
+    traj_lats, traj_lons = _generate_trajectory(params, cfg)
+    corr_matrix, obs_profile, ref_profile = _build_correlation_matrix(
+        dem, cfg, pipeline, gen, params,
+    )
 
-    center_lat = (dem.bounds[1] + dem.bounds[3]) / 2
-    center_lon = (dem.bounds[0] + dem.bounds[2]) / 2
-    corr = TERCOMCorrelator(dem, cfg)
-
-    # Build proper correlation heatmap from first estimate
-    obs_profile = None
-    corr_matrix = np.zeros((n_az, n_sp))
     first_est = results[0] if results else None
-
-    if pipeline and pipeline.last_result is not None:
-        obs_profile = pipeline.last_result.observed_profile
-        ref_profile = pipeline.last_result.reference_profile
-        for i, az in enumerate(azimuths):
-            for j, sp in enumerate(speeds):
-                ref = corr._build_reference_profile(center_lat, center_lon, az, sp, len(obs_profile))
-                if len(ref) == len(obs_profile) and np.std(ref) >= 1.0:
-                    corr_matrix[i, j] = corr._ncc(obs_profile, ref)
-    elif gen and params:
-        gen.rng = np.random.default_rng(cfg.seed)
-        radar_alts = gen.generate_profile(params, noise_std=cfg.noise_std)
-        if len(radar_alts) >= cfg.window_size:
-            obs_profile = cfg.baro_altitude - radar_alts[:cfg.window_size]
-            for i, az in enumerate(azimuths):
-                for j, sp in enumerate(speeds):
-                    ref = corr._build_reference_profile(center_lat, center_lon, az, sp, cfg.window_size)
-                    if len(ref) == cfg.window_size and np.std(ref) >= 1.0:
-                        corr_matrix[i, j] = corr._ncc(obs_profile, ref)
 
     if results:
         fig_heatmap = correlation_heatmap(
@@ -249,18 +271,15 @@ def _generate_visualizations(
 
         fig_map = trajectory_map(
             dem,
-            np.array(traj_lats), np.array(traj_lons),
+            traj_lats, traj_lons,
             est_positions,
             params.start_lat, params.start_lon,
         )
         save_html(fig_map, os.path.join(out, "trajectory_map.html"))
         click.echo("  [viz] trajectory_map.html")
 
-        show_obs = obs_profile if obs_profile is not None else np.array([])
-        show_ref = ref_profile if pipeline and pipeline.last_result is not None else np.array([])
-
         fig_profile = profile_comparison(
-            show_obs, show_ref,
+            obs_profile, ref_profile,
             first_est["azimuth_deg"] if first_est else 0,
             first_est["speed_ms"] if first_est else 0,
             first_est["correlation"] if first_est else 0,
@@ -270,7 +289,7 @@ def _generate_visualizations(
 
     fig_dash = navigation_dashboard(
         dem,
-        np.array(traj_lats), np.array(traj_lons),
+        traj_lats, traj_lons,
         results[:5] if results else [],
         azimuths, speeds, corr_matrix,
         None, None,
