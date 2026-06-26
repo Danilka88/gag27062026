@@ -1,6 +1,8 @@
 import numpy as np
 import plotly.graph_objects as go
 
+from gagarin.viz.utils import TEMPLATE, OBSERVED_COLOR, REFERENCE_COLOR
+
 
 def profile_comparison(
     observed: np.ndarray,
@@ -15,7 +17,7 @@ def profile_comparison(
             y=observed,
             mode="lines",
             name="Observed terrain profile",
-            line=dict(color="cyan", width=2),
+            line=dict(color=OBSERVED_COLOR, width=2),
         )
     )
     fig.add_trace(
@@ -23,7 +25,7 @@ def profile_comparison(
             y=reference,
             mode="lines",
             name=f"Reference profile (az={azimuth:.1f}°, v={speed:.1f} m/s)",
-            line=dict(color="orange", width=2, dash="dash"),
+            line=dict(color=REFERENCE_COLOR, width=2, dash="dash"),
         )
     )
 
@@ -32,7 +34,7 @@ def profile_comparison(
         xaxis_title="Sample",
         yaxis_title="Terrain Height (m)",
         height=450,
-        template="plotly_dark",
+        template=TEMPLATE,
         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
     )
     return fig

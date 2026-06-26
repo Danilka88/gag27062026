@@ -23,6 +23,11 @@ def offset_coords_batch(
     azimuth_rad: float,
     center_lat: float,
 ) -> Tuple[np.ndarray, np.ndarray]:
+    if lats.shape != lons.shape or lats.shape != distances.shape:
+        raise ValueError(
+            f"Shape mismatch: lats={lats.shape}, lons={lons.shape}, "
+            f"distances={distances.shape}"  # noqa: E251
+        )
     cos_lat = np.cos(np.radians(center_lat))
     dlat = distances * math.cos(azimuth_rad) / EARTH_RADIUS
     dlon = distances * math.sin(azimuth_rad) / (EARTH_RADIUS * cos_lat)

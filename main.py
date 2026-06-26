@@ -9,8 +9,8 @@ import click
 from gagarin.dem_loader import DEMLoader
 from gagarin.data_generator import DataGenerator, FlightParams
 from gagarin.pipeline import NavigationPipeline
-from gagarin.correlator import TERCOMCorrelator
-from gagarin.geo_utils import offset_coords
+from gagarin.correlator import TERCOMCorrelator, CorrelationMetrics, HypothesisSearch
+from gagarin.geo_utils import offset_coords, offset_coords_batch
 from gagarin.viz import (
     correlation_heatmap,
     trajectory_map,
@@ -86,11 +86,11 @@ def run(config_path: str):
             if est is not None:
                 results.append(est)
                 click.echo(
-                    f"  az={est['azimuth_deg']:.1f}° "
+                    f"  az={est.azimuth_deg:.1f}° "
                     f"(true={cfg.default_azimuth:.1f}°) "
-                    f"v={est['speed_ms']:.1f} m/s "
+                    f"v={est.speed_ms:.1f} m/s "
                     f"(true={cfg.default_speed:.1f}) "
-                    f"conf={est['confidence']:.3f}"
+                    f"conf={est.confidence:.3f}"
                 )
     elapsed = time.time() - start
 
@@ -98,10 +98,10 @@ def run(config_path: str):
     if results:
         first = results[0]
         click.echo(f"First estimate:")
-        click.echo(f"  Azimuth:  {first['azimuth_deg']:.1f}° (true: {cfg.default_azimuth:.1f}°)")
-        click.echo(f"  Speed:    {first['speed_ms']:.1f} m/s (true: {cfg.default_speed:.1f} m/s)")
-        click.echo(f"  Correlation: {first['correlation']:.4f}")
-        click.echo(f"  Confidence: {first['confidence']:.3f}")
+        click.echo(f"  Azimuth:  {first.azimuth_deg:.1f}° (true: {cfg.default_azimuth:.1f}°)")
+        click.echo(f"  Speed:    {first.speed_ms:.1f} m/s (true: {cfg.default_speed:.1f} m/s)")
+        click.echo(f"  Correlation: {first.correlation:.4f}")
+        click.echo(f"  Confidence: {first.confidence:.3f}")
 
     _generate_visualizations(dem, results, params, cfg, gen, pipeline)
     click.echo("\nVisualizations saved to data/output/")
@@ -149,12 +149,14 @@ def analyze(
 
         if results:
             final = results[-1]
-            click.echo(f"Final: az={final['azimuth_deg']:.1f}°, v={final['speed_ms']:.1f} m/s")
+            click.echo(f"Final: az={final.azimuth_deg:.1f}°, v={final.speed_ms:.1f} m/s")
 
         json_path = os.path.join(cfg.output_path, "estimates.json")
         with open(json_path, "w") as f:
             json.dump(
-                [{k: float(v) if isinstance(v, (np.floating,)) else v for k, v in r.items() if isinstance(v, (int, float, str, bool, list, dict)) or v is None}
+                [{k: float(v) if isinstance(v, (np.floating,)) else v
+                  for k, v in r.__dict__.items()
+                  if v is None or isinstance(v, (int, float, str, bool, list, dict))}
                  for r in results],
                 f, indent=2, default=str,
             )
@@ -201,7 +203,7 @@ def _build_correlation_matrix(
     n_sp = cfg.n_speed_hypotheses
     azimuths = np.arange(0, 360, cfg.coarse_azimuth_step)
     speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], n_sp)
-    corr = TERCOMCorrelator(dem, cfg)
+    hs = HypothesisSearch(dem, cfg)
     center_lat = (dem.bounds[1] + dem.bounds[3]) / 2
     center_lon = (dem.bounds[0] + dem.bounds[2]) / 2
 
@@ -214,9 +216,9 @@ def _build_correlation_matrix(
         ref_profile = pipeline.last_result.reference_profile
         for i, az in enumerate(azimuths):
             for j, sp in enumerate(speeds):
-                ref = corr._build_reference_profile(center_lat, center_lon, az, sp, len(obs_profile))
+                ref = hs.build_reference_profile(center_lat, center_lon, az, sp, len(obs_profile))
                 if len(ref) == len(obs_profile) and np.std(ref) >= 1.0:
-                    corr_matrix[i, j] = corr._ncc(obs_profile, ref)
+                    corr_matrix[i, j] = CorrelationMetrics.ncc(obs_profile, ref)
 
     elif gen and params:
         gen.rng = np.random.default_rng(cfg.seed)
@@ -225,9 +227,9 @@ def _build_correlation_matrix(
             obs_profile = cfg.baro_altitude - radar_alts[:cfg.window_size]
             for i, az in enumerate(azimuths):
                 for j, sp in enumerate(speeds):
-                    ref = corr._build_reference_profile(center_lat, center_lon, az, sp, cfg.window_size)
+                    ref = hs.build_reference_profile(center_lat, center_lon, az, sp, cfg.window_size)
                     if len(ref) == cfg.window_size and np.std(ref) >= 1.0:
-                        corr_matrix[i, j] = corr._ncc(obs_profile, ref)
+                        corr_matrix[i, j] = CorrelationMetrics.ncc(obs_profile, ref)
 
     return corr_matrix, obs_profile, ref_profile
 
@@ -258,13 +260,13 @@ def _generate_visualizations(
     if results:
         fig_heatmap = correlation_heatmap(
             azimuths, speeds, corr_matrix,
-            first_est["azimuth_deg"] if first_est else None,
-            first_est["speed_ms"] if first_est else None,
+            first_est.azimuth_deg if first_est else None,
+            first_est.speed_ms if first_est else None,
         )
         save_html(fig_heatmap, os.path.join(out, "correlation_heatmap.html"))
         click.echo("  [viz] correlation_heatmap.html")
 
-        est_positions = [(r["position_lat"], r["position_lon"]) for r in results[:5]]
+        est_positions = [(r.position_lat, r.position_lon) for r in results[:5]]
 
         fig_map = trajectory_map(
             dem,
@@ -277,9 +279,9 @@ def _generate_visualizations(
 
         fig_profile = profile_comparison(
             obs_profile, ref_profile,
-            first_est["azimuth_deg"] if first_est else 0,
-            first_est["speed_ms"] if first_est else 0,
-            first_est["correlation"] if first_est else 0,
+            first_est.azimuth_deg if first_est else 0,
+            first_est.speed_ms if first_est else 0,
+            first_est.correlation if first_est else 0,
         )
         save_html(fig_profile, os.path.join(out, "profile_comparison.html"))
         click.echo("  [viz] profile_comparison.html")

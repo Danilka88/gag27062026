@@ -4,7 +4,7 @@ import numpy as np
 from gagarin.correlator import MatchResult
 
 
-def assess(match: MatchResult) -> dict:
+def _assess(match: MatchResult) -> dict:
     confidence = match.confidence
     roughness = match.terrain_roughness
 
@@ -29,19 +29,17 @@ def assess(match: MatchResult) -> dict:
 
 
 def peak_sharpness(match: MatchResult) -> float:
-    if match is None:
-        return 0.0
     corr_signal = np.abs(match.reference_profile - np.mean(match.reference_profile))
-    if np.std(corr_signal) < 1e-12:
+    std = np.std(corr_signal)
+    if std < 1e-12:
         return 0.0
-    return float(np.max(corr_signal) / np.std(corr_signal))
+    return float(np.max(corr_signal) / std)
 
 
 def discrimination_ratio(match: MatchResult) -> float:
-    if match is None:
-        return 0.0
+    n = len(match.reference_profile)
     aligned = np.abs(match.observed_profile - match.reference_profile)
-    misaligned = np.abs(match.observed_profile - np.roll(match.reference_profile, len(match.reference_profile) // 4))
+    misaligned = np.abs(match.observed_profile - np.roll(match.reference_profile, n // 4))
     sum_aligned = np.sum(aligned)
     sum_misaligned = np.sum(misaligned)
     if sum_aligned < 1e-12:
@@ -59,4 +57,4 @@ def assess_match(match: Optional[MatchResult]) -> dict:
             "peak_sharpness": 0.0,
             "discrimination_ratio": 0.0,
         }
-    return assess(match)
+    return _assess(match)

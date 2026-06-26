@@ -2,6 +2,8 @@ from typing import Optional
 import numpy as np
 import plotly.graph_objects as go
 
+from gagarin.viz.utils import TEMPLATE, BEST_MARKER
+
 
 def correlation_heatmap(
     azimuths: np.ndarray,
@@ -27,7 +29,7 @@ def correlation_heatmap(
                 x=[best_azimuth],
                 y=[best_speed],
                 mode="markers",
-                marker=dict(color="lime", size=14, symbol="star"),
+                marker=BEST_MARKER,
                 name=f"Best: {best_azimuth:.1f}°, {best_speed:.1f} m/s",
             )
         )
@@ -38,6 +40,6 @@ def correlation_heatmap(
         yaxis_title="Speed (m/s)",
         xaxis=dict(dtick=30),
         height=600,
-        template="plotly_dark",
+        template=TEMPLATE,
     )
     return fig

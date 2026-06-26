@@ -2,16 +2,17 @@ from typing import Optional, List
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import plotly.io as pio
 
 from gagarin.dem_loader import DEMLoader
+from gagarin.estimator import NavigationEstimate
+from gagarin.viz.utils import TEMPLATE, get_grid_or_fallback
 
 
 def navigation_dashboard(
     dem: DEMLoader,
     trajectory_lats: np.ndarray,
     trajectory_lons: np.ndarray,
-    estimates: List[dict],
+    estimates: List[NavigationEstimate],
     azimuths: np.ndarray,
     speeds: np.ndarray,
     corr_matrix: np.ndarray,
@@ -35,12 +36,7 @@ def navigation_dashboard(
         horizontal_spacing=0.1,
     )
 
-    try:
-        lons, lats, elevation = dem.get_geographic_grid()
-    except (NotImplementedError, AttributeError):
-        xs, ys, elevation = dem.get_elevation_grid()
-        lons = xs
-        lats = ys
+    lons, lats, elevation = get_grid_or_fallback(dem)
 
     lon_grid, lat_grid = np.meshgrid(lons, lats)
 
@@ -74,8 +70,8 @@ def navigation_dashboard(
     )
 
     if estimates:
-        est_lons = [e["position_lon"] for e in estimates]
-        est_lats = [e["position_lat"] for e in estimates]
+        est_lons = [e.position_lon for e in estimates]
+        est_lats = [e.position_lat for e in estimates]
         try:
             est_zs = dem.elevation_batch(np.array(est_lats), np.array(est_lons))
         except (IndexError, ValueError):
@@ -122,13 +118,13 @@ def navigation_dashboard(
 
     if estimates:
         est_idx = list(range(len(estimates)))
-        est_corr = [e.get("correlation", 0) for e in estimates]
+        est_corr = [e.correlation for e in estimates]
         fig.add_trace(
             go.Scatter(x=est_idx, y=est_corr, mode="lines+markers", name="Correlation", line=dict(color="lime")),
             row=2,
             col=2,
         )
-        est_conf = [e.get("confidence", 0) for e in estimates]
+        est_conf = [e.confidence for e in estimates]
         fig.add_trace(
             go.Scatter(x=est_idx, y=est_conf, mode="lines+markers", name="Confidence", line=dict(color="orange", dash="dot")),
             row=2,
@@ -138,7 +134,7 @@ def navigation_dashboard(
     fig.update_layout(
         title="TERCOM Navigation Dashboard",
         height=900,
-        template="plotly_dark",
+        template=TEMPLATE,
         showlegend=True,
     )
 
@@ -161,5 +157,4 @@ def navigation_dashboard(
     return fig
 
 
-def save_html(fig: go.Figure, path: str):
-    pio.write_html(fig, path, auto_open=False)
+

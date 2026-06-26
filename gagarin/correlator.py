@@ -27,64 +27,60 @@ class Hypothesis:
     lag: int
 
 
-class TERCOMCorrelator:
-    def __init__(self, dem: DEMLoader, config: Config = None):
-        self.dem = dem
-        self.config = config or Config.default()
+class CorrelationMetrics:
+    @staticmethod
+    def ncc(a: np.ndarray, b: np.ndarray) -> float:
+        a = a.astype(np.float64)
+        b = b.astype(np.float64)
+        a_mean = a - np.mean(a)
+        b_mean = b - np.mean(b)
+        denom = np.sqrt(np.sum(a_mean ** 2) * np.sum(b_mean ** 2))
+        if denom < 1e-12:
+            return 0.0
+        return float(np.sum(a_mean * b_mean) / denom)
 
-    def search(
+    @staticmethod
+    def cross_correlation(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        return np.correlate(a, b, mode="same")
+
+    @staticmethod
+    def compute_confidence(corr_profile: np.ndarray, roughness: float) -> float:
+        max_corr = float(np.max(np.abs(corr_profile)))
+        if len(corr_profile) < 3 or max_corr < 0.01:
+            return 0.0
+        sorted_vals = np.sort(np.abs(corr_profile))
+        median_corr = float(sorted_vals[len(sorted_vals) // 2])
+        sharpness = (max_corr - median_corr) / (max_corr + 1e-12)
+        terrain_factor = min(roughness / 20.0, 1.0)
+        return float(np.clip(sharpness * terrain_factor, 0.0, 1.0))
+
+
+class HypothesisSearch:
+    def __init__(self, dem: DEMLoader, config: Config):
+        self.dem = dem
+        self.config = config
+        self._cached_coarse_azimuths: Optional[np.ndarray] = None
+
+    def build_reference_profile(
         self,
-        observed_profile: np.ndarray,
         center_lat: float,
         center_lon: float,
-    ) -> Optional[MatchResult]:
-        if len(observed_profile) < 5:
-            return None
+        azimuth_deg: float,
+        speed_ms: float,
+        n_points: int,
+    ) -> np.ndarray:
+        dt = 1.0 / self.config.nmea_freq_hz
+        d_step = speed_ms * dt
+        azimuth_rad = np.radians(azimuth_deg)
 
-        roughness = float(np.std(observed_profile))
-        if roughness < self.config.terrain_std_threshold:
-            return None
+        distances = np.arange(n_points, dtype=np.float64) * d_step
+        lats = np.full(n_points, center_lat)
+        lons = np.full(n_points, center_lon)
+        lats, lons = offset_coords_batch(lats, lons, distances, azimuth_rad, center_lat)
+        lats, lons = self.dem.normalize_coordinates(lats, lons)
+        return self.dem.elevation_batch(lats, lons)
 
-        coarse_hypotheses = self._coarse_search(observed_profile, center_lat, center_lon)
-        if not coarse_hypotheses:
-            return None
-
-        fine_hypotheses = self._fine_search(
-            observed_profile, center_lat, center_lon, coarse_hypotheses[:self.config.coarse_top_n]
-        )
-        if not fine_hypotheses:
-            fine_hypotheses = coarse_hypotheses[:1]
-
-        best = fine_hypotheses[0]
-
-        ref_profile = self._build_reference_profile(
-            center_lat, center_lon,
-            best.azimuth_deg, best.speed_ms,
-            len(observed_profile),
-        )
-
-        best_corr = self._ncc(observed_profile, ref_profile)
-
-        corr_full = self._cross_correlation(
-            observed_profile.astype(np.float64),
-            ref_profile.astype(np.float64),
-        )
-        best_lag = int(np.argmax(np.abs(corr_full))) - len(observed_profile) // 2
-
-        confidence = self._compute_confidence(corr_full, roughness)
-
-        return MatchResult(
-            azimuth_deg=best.azimuth_deg,
-            speed_ms=best.speed_ms,
-            correlation=best_corr,
-            lag_samples=best_lag,
-            confidence=confidence,
-            terrain_roughness=roughness,
-            reference_profile=ref_profile,
-            observed_profile=observed_profile,
-        )
-
-    def _search_grid(
+    def search_grid(
         self,
         profile: np.ndarray,
         center_lat: float,
@@ -97,28 +93,29 @@ class TERCOMCorrelator:
         hypotheses = []
         for az in azimuths:
             for sp in speeds:
-                ref = self._build_reference_profile(center_lat, center_lon, az, sp, n)
+                ref = self.build_reference_profile(center_lat, center_lon, az, sp, n)
                 if min_std is not None and np.std(ref) < min_std:
                     continue
-                corr = self._ncc(profile, ref)
+                corr = CorrelationMetrics.ncc(profile, ref)
                 hypotheses.append(Hypothesis(az, sp, corr, 0))
         return hypotheses
 
-    def _coarse_search(
+    def coarse_search(
         self,
         profile: np.ndarray,
         center_lat: float,
         center_lon: float,
     ) -> List[Hypothesis]:
         cfg = self.config
-        if not hasattr(self, "_cached_coarse_azimuths") or len(self._cached_coarse_azimuths) != int(360 / cfg.coarse_azimuth_step):
+        n_az = int(360 / cfg.coarse_azimuth_step)
+        if self._cached_coarse_azimuths is None or len(self._cached_coarse_azimuths) != n_az:
             self._cached_coarse_azimuths = np.arange(0, 360, cfg.coarse_azimuth_step)
         speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], cfg.n_speed_hypotheses)
-        hypotheses = self._search_grid(profile, center_lat, center_lon, self._cached_coarse_azimuths, speeds, cfg.terrain_std_threshold * 0.5)
+        hypotheses = self.search_grid(profile, center_lat, center_lon, self._cached_coarse_azimuths, speeds, cfg.terrain_std_threshold * 0.5)
         hypotheses.sort(key=lambda h: h.correlation, reverse=True)
         return hypotheses[:10]
 
-    def _fine_search(
+    def fine_search(
         self,
         profile: np.ndarray,
         center_lat: float,
@@ -139,52 +136,66 @@ class TERCOMCorrelator:
                 min(cfg.speed_range_ms[1], hyp.speed_ms + 15),
                 n_speeds,
             )
-            fine_hypotheses.extend(self._search_grid(profile, center_lat, center_lon, fine_azs, fine_speeds))
+            fine_hypotheses.extend(self.search_grid(profile, center_lat, center_lon, fine_azs, fine_speeds))
 
         fine_hypotheses.sort(key=lambda h: h.correlation, reverse=True)
         return fine_hypotheses[:10]
 
-    def _build_reference_profile(
+
+class TERCOMCorrelator:
+    def __init__(self, dem: DEMLoader, config: Config = None):
+        cfg = config or Config.default()
+        self._hypothesis_search = HypothesisSearch(dem, cfg)
+        self.config = cfg
+
+    def search(
         self,
+        observed_profile: np.ndarray,
         center_lat: float,
         center_lon: float,
-        azimuth_deg: float,
-        speed_ms: float,
-        n_points: int,
-    ) -> np.ndarray:
-        dt = 1.0 / self.config.nmea_freq_hz
-        d_step = speed_ms * dt
-        azimuth_rad = np.radians(azimuth_deg)
+    ) -> Optional[MatchResult]:
+        if len(observed_profile) < 5:
+            return None
 
-        distances = np.arange(n_points, dtype=np.float64) * d_step
-        lats = np.full(n_points, center_lat)
-        lons = np.full(n_points, center_lon)
-        lats, lons = offset_coords_batch(lats, lons, distances, azimuth_rad, center_lat)
-        lats, lons = self.dem.normalize_coordinates(lats, lons)
-        return self.dem.elevation_batch(lats, lons)
+        roughness = float(np.std(observed_profile))
+        if roughness < self.config.terrain_std_threshold:
+            return None
 
-    @staticmethod
-    def _ncc(a: np.ndarray, b: np.ndarray) -> float:
-        a = a.astype(np.float64)
-        b = b.astype(np.float64)
-        a_mean = a - np.mean(a)
-        b_mean = b - np.mean(b)
-        denom = np.sqrt(np.sum(a_mean ** 2) * np.sum(b_mean ** 2))
-        if denom < 1e-12:
-            return 0.0
-        return float(np.sum(a_mean * b_mean) / denom)
+        coarse = self._hypothesis_search.coarse_search(observed_profile, center_lat, center_lon)
+        if not coarse:
+            return None
 
-    @staticmethod
-    def _cross_correlation(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-        return np.correlate(a, b, mode="same")
+        fine = self._hypothesis_search.fine_search(
+            observed_profile, center_lat, center_lon, coarse[:self.config.coarse_top_n]
+        )
+        if not fine:
+            fine = coarse[:1]
 
-    @staticmethod
-    def _compute_confidence(corr_profile: np.ndarray, roughness: float) -> float:
-        max_corr = float(np.max(np.abs(corr_profile)))
-        if len(corr_profile) < 3 or max_corr < 0.01:
-            return 0.0
-        sorted_vals = np.sort(np.abs(corr_profile))
-        median_corr = float(sorted_vals[len(sorted_vals) // 2])
-        sharpness = (max_corr - median_corr) / (max_corr + 1e-12)
-        terrain_factor = min(roughness / 20.0, 1.0)
-        return float(np.clip(sharpness * terrain_factor, 0.0, 1.0))
+        best = fine[0]
+
+        ref_profile = self._hypothesis_search.build_reference_profile(
+            center_lat, center_lon,
+            best.azimuth_deg, best.speed_ms,
+            len(observed_profile),
+        )
+
+        best_corr = CorrelationMetrics.ncc(observed_profile, ref_profile)
+
+        corr_full = CorrelationMetrics.cross_correlation(
+            observed_profile.astype(np.float64),
+            ref_profile.astype(np.float64),
+        )
+        best_lag = int(np.argmax(np.abs(corr_full))) - len(observed_profile) // 2
+
+        confidence = CorrelationMetrics.compute_confidence(corr_full, roughness)
+
+        return MatchResult(
+            azimuth_deg=best.azimuth_deg,
+            speed_ms=best.speed_ms,
+            correlation=best_corr,
+            lag_samples=best_lag,
+            confidence=confidence,
+            terrain_roughness=roughness,
+            reference_profile=ref_profile,
+            observed_profile=observed_profile,
+        )

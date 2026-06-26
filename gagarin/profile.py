@@ -2,7 +2,8 @@ from typing import List, Optional
 import numpy as np
 
 from gagarin.nmea_parser import NMEAReading
-from gagarin.config import Config
+
+_DEFAULT_BARO: float = 1500.0
 
 
 def extract_terrain_profile(
@@ -12,7 +13,7 @@ def extract_terrain_profile(
     if not readings:
         return np.array([])
 
-    baro = baro_altitude if baro_altitude is not None else Config.default().baro_altitude
+    baro = _DEFAULT_BARO if baro_altitude is None else baro_altitude
     altitudes = np.array([r.altitude for r in readings])
     terrain = baro - altitudes
     terrain = np.maximum(terrain, -500.0)

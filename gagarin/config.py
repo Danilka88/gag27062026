@@ -33,7 +33,7 @@ class Config:
     noise_std: float = 2.0
     default_azimuth: float = 45.0
     default_speed: float = 60.0
-    flight_duration: float = 25.0
+    flight_duration: float = 120.0
 
     def __post_init__(self):
         if self.window_size <= 0:

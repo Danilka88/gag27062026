@@ -3,6 +3,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from gagarin.dem_loader import DEMLoader
+from gagarin.viz.utils import TEMPLATE, TRUE_LINE, ESTIMATED_LINE, get_grid_or_fallback
 
 
 def trajectory_map(
@@ -14,12 +15,7 @@ def trajectory_map(
     center_lon: Optional[float] = None,
     height: int = 700,
 ) -> go.Figure:
-    try:
-        lons, lats, elevation = dem.get_geographic_grid()
-    except (NotImplementedError, AttributeError):
-        xs, ys, elevation = dem.get_elevation_grid()
-        lons = xs
-        lats = ys
+    lons, lats, elevation = get_grid_or_fallback(dem)
 
     fig = go.Figure()
     fig.add_trace(
