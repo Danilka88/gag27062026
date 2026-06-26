@@ -12,6 +12,7 @@ from gagarin.eskf import ErrorStateKalmanFilter
 from gagarin.quality import assess_match
 from gagarin.dem_loader import DEMLoader
 from gagarin.config import Config
+from gagarin.constants import EARTH_RADIUS
 
 
 class NavigationPipeline:
@@ -98,24 +99,20 @@ class NavigationPipeline:
         self.last_result = match
         estimate = self.estimator.estimate(match, self.center_lat, self.center_lon)
 
-        R = 6371000.0
         az_rad = np.radians(estimate["azimuth_deg"])
         speed = estimate["speed_ms"]
         vx = speed * np.sin(az_rad)
         vy = speed * np.cos(az_rad)
 
         dt_center = 1.0 / self.config.nmea_freq_hz
-        R = 6371000.0
         cos_lat = np.cos(np.radians(estimate["position_lat"]))
 
-        # Dead reckoning: advance center by 1 step (speed * dt)
-        dr_dlat = speed * np.cos(az_rad) * dt_center / R
-        dr_dlon = speed * np.sin(az_rad) * dt_center / (R * cos_lat)
+        dr_dlat = speed * np.cos(az_rad) * dt_center / EARTH_RADIUS
+        dr_dlon = speed * np.sin(az_rad) * dt_center / (EARTH_RADIUS * cos_lat)
 
-        # Lag correction: accumulated position error from cross-correlation
         lag_m = estimate["lag_distance_m"]
-        corr_dlat = lag_m * np.cos(az_rad) / R
-        corr_dlon = lag_m * np.sin(az_rad) / (R * cos_lat)
+        corr_dlat = lag_m * np.cos(az_rad) / EARTH_RADIUS
+        corr_dlon = lag_m * np.sin(az_rad) / (EARTH_RADIUS * cos_lat)
 
         self.center_lat += np.degrees(dr_dlat + corr_dlat)
         self.center_lon += np.degrees(dr_dlon + corr_dlon)

@@ -1,10 +1,10 @@
-from typing import List, Tuple, Optional
+from typing import List, Optional
 from dataclasses import dataclass
 import numpy as np
-from numba import njit
 
 from gagarin.dem_loader import DEMLoader
 from gagarin.config import Config
+from gagarin.geo_utils import offset_coords_batch
 
 
 @dataclass
@@ -157,16 +157,10 @@ class TERCOMCorrelator:
         d_step = speed_ms * dt
         azimuth_rad = np.radians(azimuth_deg)
 
-        R = 6371000.0
-        cos_lat = np.cos(np.radians(center_lat))
-        lat_rad = np.radians(center_lat)
-
         distances = np.arange(n_points, dtype=np.float64) * d_step
-        dlat = distances * np.cos(azimuth_rad) / R
-        dlon = distances * np.sin(azimuth_rad) / (R * cos_lat)
-
-        lats = center_lat + np.degrees(dlat)
-        lons = center_lon + np.degrees(dlon)
+        lats = np.full(n_points, center_lat)
+        lons = np.full(n_points, center_lon)
+        lats, lons = offset_coords_batch(lats, lons, distances, azimuth_rad, center_lat)
         lats, lons = self.dem.normalize_coordinates(lats, lons)
         return self.dem.elevation_batch(lats, lons)
 

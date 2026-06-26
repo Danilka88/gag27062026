@@ -1,5 +1,7 @@
-from typing import Optional, Tuple
+from typing import Optional
 import numpy as np
+
+from gagarin.constants import EARTH_RADIUS
 
 
 class ErrorStateKalmanFilter:
@@ -28,8 +30,6 @@ class ErrorStateKalmanFilter:
         self.R_pos = np.eye(2) * 5.0
         self.R_vel = np.eye(2) * 2.0
 
-        self._R_earth = 6371000.0
-
     def predict(self):
         dt = self.dt
         F = np.eye(self.dim)
@@ -43,14 +43,14 @@ class ErrorStateKalmanFilter:
 
     def update_position(self, lat: float, lon: float, R: Optional[np.ndarray] = None):
         cos_lat = np.cos(np.radians(self.lat))
-        pred_lat = self.lat + np.degrees(self.delta[0] / self._R_earth)
-        pred_lon = self.lon + np.degrees(self.delta[1] / (self._R_earth * cos_lat))
+        pred_lat = self.lat + np.degrees(self.delta[0] / EARTH_RADIUS)
+        pred_lon = self.lon + np.degrees(self.delta[1] / (EARTH_RADIUS * cos_lat))
 
         z = np.array([lat - pred_lat, lon - pred_lon])
 
         H = np.zeros((2, self.dim))
-        H[0, 0] = 1.0 / self._R_earth
-        H[1, 1] = 1.0 / (self._R_earth * cos_lat)
+        H[0, 0] = 1.0 / EARTH_RADIUS
+        H[1, 1] = 1.0 / (EARTH_RADIUS * cos_lat)
 
         R_mat = R if R is not None else self.R_pos
         S = H @ self.P @ H.T + R_mat
@@ -77,8 +77,8 @@ class ErrorStateKalmanFilter:
 
     def reset(self):
         cos_lat = np.cos(np.radians(self.lat))
-        self.lat += np.degrees(self.delta[0] / self._R_earth)
-        self.lon += np.degrees(self.delta[1] / (self._R_earth * cos_lat))
+        self.lat += np.degrees(self.delta[0] / EARTH_RADIUS)
+        self.lon += np.degrees(self.delta[1] / (EARTH_RADIUS * cos_lat))
         self.vx += self.delta[2]
         self.vy += self.delta[3]
         self.delta.fill(0.0)

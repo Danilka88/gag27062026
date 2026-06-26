@@ -1,10 +1,11 @@
 from typing import List, Optional, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import numpy as np
 import math
 
 from gagarin.dem_loader import DEMLoader
 from gagarin.config import Config
+from gagarin.geo_utils import offset_coords
 
 
 @dataclass
@@ -37,7 +38,7 @@ class DataGenerator:
         lons = np.zeros(n)
         for i in range(n):
             dist = i * d_step
-            lats[i], lons[i] = self._offset_coords(
+            lats[i], lons[i] = offset_coords(
                 params.start_lat, params.start_lon,
                 dist, params.azimuth_rad
             )
@@ -51,19 +52,7 @@ class DataGenerator:
     def generate_nmea_lines(
         self, params: FlightParams, noise_std: float = 3.0
     ) -> List[str]:
-        radar_alts = self.generate_profile(params, noise_std)
-        lines = []
-        base_time = 123519.0
-        for i, alt in enumerate(radar_alts):
-            ts = base_time + i * (1.0 / self.config.nmea_freq_hz)
-            hhmmss = self._seconds_to_nmea_time(ts)
-            alt_str = f"{alt:.1f}"
-            sentence = (
-                f"$GPGGA,{hhmmss},,,,,,,,{alt_str},M,,,"
-            )
-            csum = self._nmea_checksum(sentence[1:])
-            lines.append(f"{sentence}*{csum:02X}")
-        return lines
+        return list(self.stream_nmea(params, noise_std))
 
     def generate_nmea_file(self, path: str, params: FlightParams, noise_std: float = 3.0):
         lines = self.generate_nmea_lines(params, noise_std)
@@ -86,15 +75,6 @@ class DataGenerator:
             )
             csum = self._nmea_checksum(sentence[1:])
             yield f"{sentence}*{csum:02X}"
-
-    @staticmethod
-    def _offset_coords(
-        lat: float, lon: float, distance_m: float, azimuth_rad: float
-    ) -> tuple:
-        R = 6371000.0
-        dlat = distance_m * math.cos(azimuth_rad) / R
-        dlon = distance_m * math.sin(azimuth_rad) / (R * math.cos(math.radians(lat)))
-        return lat + math.degrees(dlat), lon + math.degrees(dlon)
 
     @staticmethod
     def _seconds_to_nmea_time(seconds: float) -> str:

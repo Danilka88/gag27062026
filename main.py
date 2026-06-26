@@ -10,6 +10,7 @@ from gagarin.dem_loader import DEMLoader
 from gagarin.data_generator import DataGenerator, FlightParams
 from gagarin.pipeline import NavigationPipeline
 from gagarin.correlator import TERCOMCorrelator
+from gagarin.geo_utils import offset_coords
 from gagarin.viz import (
     correlation_heatmap,
     trajectory_map,
@@ -18,11 +19,6 @@ from gagarin.viz import (
     save_html,
 )
 from gagarin.config import Config
-
-
-@click.group()
-def cli():
-    pass
 
 
 @cli.command()
@@ -201,7 +197,7 @@ def _generate_visualizations(
     dt = 1.0 / cfg.nmea_freq_hz
     for i in range(int(params.duration_s * cfg.nmea_freq_hz)):
         dist = i * params.speed_ms * dt
-        lat, lon = DataGenerator._offset_coords(
+        lat, lon = offset_coords(
             params.start_lat, params.start_lon, dist, params.azimuth_rad
         )
         traj_lats.append(lat)
