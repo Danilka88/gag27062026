@@ -23,7 +23,7 @@
 
 **Преимущества TERCOM для данного проекта:**
 1. Детерминизм — одинаковый результат при одинаковых входных данных (легче отлаживать)
-2. coarse-to-fine даёт ~664ms на MacBook Air M4 (360 coarse гипотез + fine refinement)
+2. coarse-to-fine даёт ~60ms на MacBook Air M4 (360 coarse гипотез + fine refinement)
 3. Не требует начальной гипотезы (search по всей сетке azimuth×speed)
 4. Простая кросс-корреляция — не надо обучать модель
 5. Доказанная авионика 1960-х (Cruise Missile, Tomahawk)
@@ -37,7 +37,7 @@
 - O(A×S×W) где A — количество азимутов, S — скоростей, W — размер окна.
 - coarse-topN 5 → fine (6°×0.5°, 15м/с×~12 шагов) лишь ×10 к coarse.
 - Batch-операции векторизованы numpy → GPU потенциально через CuPy/JAX.
-- На RPi (ARM64) ожидается ~5-10s/окно → нужны оптимизации (numba JIT, downsampling DEM, меньше гипотез).
+- На RPi (ARM64) ожидается ~0.5-1.5s/окно → целевой порог <100ms через numba JIT.
 - **Не масштабируется горизонтально** — последовательный streaming.
 
 ---
@@ -114,7 +114,7 @@
 **Преимущества:**
 1. Алгоритмически прост, детерминирован
 2. fine margin = 6° (полшага 10° + запас) гарантирует покрытие
-3. 664ms против 880ms brute-force (×1.32 ускорение)
+3. 60ms против ~120ms brute-force (×2 ускорение, поиск векторизован)
 
 **Масштабирование:**
 - coarse step 10° → 36 azimuths — можно уменьшить до 5° (72) за ×2 времени
@@ -321,9 +321,14 @@
 3. Сжатие (DEFLATE, LZW) — 30m tile ~30MB без сжатия, ~10MB со сжатием
 4. COG overlay — можно загрузить только нужный bounding box
 
+**Synthetic DEMs (for development):**
+- `synthetic_kamchatka.tif`: 400×400, 101–600m, σ=95m — плавный, для разработки
+- `dramatic_kamchatka.tif`: 400×400, 10–3489m, σ=687m — 6 вулканов + гребни + каньоны
+- Генерация: `gagarin generate-dem` — procedural terrain with Perlin noise, user-defined σ
+
 **Масштабирование:**
 - 30m resolution → ~3600×3600 px на 1°×1° tile
-- Для маршрута 120s × 60m/s = 7200m → окно 200 точек, ~12× downsample → ~600 px вдоль трека
+- Для маршрута 300s × 60m/s = 18000m → окно 200 точек, ~12× downsample → ~600 px вдоль трека
 - Текущий DEM 400×400 — 400 km² — с запасом
 - На большие расстояния (100+ km) нужно multi-tile stitching или CDB (Oracle) масштабирование
 
@@ -348,10 +353,11 @@
 
 **Преимущества Plotly:**
 1. `Surface + Scatter3d + Heatmap + Scatter` — все типы в одной библиотеке
-2. `make_subplots` — 2×2 dashboard с разнотипными графиками
+2. `make_subplots` — 2×2 dashboard с разнотипными графиками (русские подписи: «Рельеф», «Корреляция», «Профиль», «Временной ряд»)
 3. `plotly.io.write_html()` — самодостаточный HTML (все данные в JSON внутри)
 4. Plotly Dark template — читаемо на проекторе
 5. Hover info — дебаг correlation по каждой точке
+6. Comparison dashboard (`run --compare`) — side-by-side synthetic vs dramatic DEM, 3D terrain + profiles + correlation timeline
 
 **Масштабирование:**
 - HTML-файлы: 4 графика → ~1-3 MB каждый (можно `auto_play=False` → меньше)
@@ -454,7 +460,7 @@
 | **doctest** | Тесты в docstring — для демонстрации, не для coverage. |
 
 **Масштабирование:**
-- 32 теста → <0.3s
+- 32 теста → ~0.3s
 - Параметризация `@pytest.mark.parametrize` легко расширяет coverage
 - `pytest-benchmark` для performance regression тестов (задекларирован)
 
@@ -545,6 +551,6 @@
 | **plotly** | viz | matplotlib, bokeh | Интерактивный HTML, 3D + Heatmap | Dashboard ~5MB |
 | **pynmea2** | NMEA parser | custom parser | Checksum, GGA parsing | ~10μs/msg |
 | **click** | CLI | argparse, typer | Группы, авто-help | Dispatch only |
-| **pytest** | testing | unittest | assert, auto-discovery | 0.3s/31 tests |
+| **pytest** | testing | unittest | assert, auto-discovery | 0.3s/32 tests |
 | **hatchling** | build | setuptools, poetry | PEP 621, minimal | N/A |
 | **requests** | HTTP | httpx, urllib | streaming, timeout | Однократный download |
