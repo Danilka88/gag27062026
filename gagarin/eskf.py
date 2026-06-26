@@ -4,6 +4,11 @@ import numpy as np
 from gagarin.constants import EARTH_RADIUS
 
 
+def _kalman_gain(P: np.ndarray, H: np.ndarray, R: np.ndarray) -> np.ndarray:
+    S = H @ P @ H.T + R
+    return np.linalg.solve(S, H @ P).T
+
+
 class ErrorStateKalmanFilter:
     def __init__(
         self,
@@ -19,7 +24,7 @@ class ErrorStateKalmanFilter:
         self.vy = 0.0
 
         self.dim = 6
-        self.delta = np.zeros(self.dim)
+        self.dx = np.zeros(self.dim)
         self.P = np.eye(self.dim) * 10.0
 
         self.Q = np.eye(self.dim)
@@ -38,13 +43,18 @@ class ErrorStateKalmanFilter:
         F[2, 4] = dt
         F[3, 5] = dt
 
-        self.delta = F @ self.delta
+        self.dx = F @ self.dx
         self.P = F @ self.P @ F.T + self.Q
+
+    def _update(self, z: np.ndarray, H: np.ndarray, R: np.ndarray):
+        K = _kalman_gain(self.P, H, R)
+        self.dx = self.dx + K @ z
+        self.P = (np.eye(self.dim) - K @ H) @ self.P
 
     def update_position(self, lat: float, lon: float, R: Optional[np.ndarray] = None):
         cos_lat = np.cos(np.radians(self.lat))
-        pred_lat = self.lat + np.degrees(self.delta[0] / EARTH_RADIUS)
-        pred_lon = self.lon + np.degrees(self.delta[1] / (EARTH_RADIUS * cos_lat))
+        pred_lat = self.lat + np.degrees(self.dx[0] / EARTH_RADIUS)
+        pred_lon = self.lon + np.degrees(self.dx[1] / (EARTH_RADIUS * cos_lat))
 
         z = np.array([lat - pred_lat, lon - pred_lon])
 
@@ -52,36 +62,26 @@ class ErrorStateKalmanFilter:
         H[0, 0] = 1.0 / EARTH_RADIUS
         H[1, 1] = 1.0 / (EARTH_RADIUS * cos_lat)
 
-        R_mat = R if R is not None else self.R_pos
-        S = H @ self.P @ H.T + R_mat
-        K = self.P @ H.T @ np.linalg.inv(S)
-
-        self.delta = self.delta + K @ z
-        self.P = (np.eye(self.dim) - K @ H) @ self.P
+        self._update(z, H, R if R is not None else self.R_pos)
 
     def update_velocity(self, vx: float, vy: float, R: Optional[np.ndarray] = None):
-        pred_vx = self.vx + self.delta[2]
-        pred_vy = self.vy + self.delta[3]
+        pred_vx = self.vx + self.dx[2]
+        pred_vy = self.vy + self.dx[3]
         z = np.array([vx - pred_vx, vy - pred_vy])
 
         H = np.zeros((2, self.dim))
         H[0, 2] = 1.0
         H[1, 3] = 1.0
 
-        R_mat = R if R is not None else self.R_vel
-        S = H @ self.P @ H.T + R_mat
-        K = self.P @ H.T @ np.linalg.inv(S)
-
-        self.delta = self.delta + K @ z
-        self.P = (np.eye(self.dim) - K @ H) @ self.P
+        self._update(z, H, R if R is not None else self.R_vel)
 
     def reset(self):
         cos_lat = np.cos(np.radians(self.lat))
-        self.lat += np.degrees(self.delta[0] / EARTH_RADIUS)
-        self.lon += np.degrees(self.delta[1] / (EARTH_RADIUS * cos_lat))
-        self.vx += self.delta[2]
-        self.vy += self.delta[3]
-        self.delta.fill(0.0)
+        self.lat += np.degrees(self.dx[0] / EARTH_RADIUS)
+        self.lon += np.degrees(self.dx[1] / (EARTH_RADIUS * cos_lat))
+        self.vx += self.dx[2]
+        self.vy += self.dx[3]
+        self.dx.fill(0.0)
 
     def get_state(self) -> dict:
         return {
@@ -95,8 +95,3 @@ class ErrorStateKalmanFilter:
     def set_position(self, lat: float, lon: float):
         self.lat = lat
         self.lon = lon
-
-    def set_velocity(self, speed_ms: float, azimuth_deg: float):
-        az_rad = np.radians(azimuth_deg)
-        self.vx = speed_ms * np.sin(az_rad)
-        self.vy = speed_ms * np.cos(az_rad)

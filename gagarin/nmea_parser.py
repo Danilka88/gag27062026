@@ -17,11 +17,7 @@ class NMEAParser:
             return None
         try:
             msg = pynmea2.parse(line)
-        except pynmea2.ChecksumError:
-            return None
-        except pynmea2.ParseError:
-            return None
-        except Exception:
+        except (pynmea2.ChecksumError, pynmea2.ParseError):
             return None
         if msg.sentence_type != "GGA":
             return None
@@ -33,7 +29,7 @@ class NMEAParser:
         return NMEAReading(timestamp=ts, altitude=alt)
 
     @staticmethod
-    def _timestamp_to_seconds(t) -> float:
+    def _timestamp_to_seconds(t: Optional["pynmea2.types.Timestamp"]) -> float:
         if t is None:
             return 0.0
-        return t.hour * 3600.0 + t.minute * 60.0 + t.second + (getattr(t, "microsecond", 0) / 1e6)
+        return t.hour * 3600.0 + t.minute * 60.0 + t.second + (t.microsecond / 1e6)

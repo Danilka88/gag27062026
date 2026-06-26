@@ -56,8 +56,9 @@ def test_set_position():
     assert abs(state["lon"] - 160.5) < 1e-10
 
 
-def test_set_velocity():
-    kf = ErrorStateKalmanFilter()
-    kf.set_velocity(60.0, 45.0)
-    state = kf.get_state()
-    assert abs(state["speed_ms"] - 60.0) < 0.1
+def test_kalman_gain_not_nan():
+    kf = ErrorStateKalmanFilter(init_lat=56.0, init_lon=160.5, dt=0.1)
+    kf.predict()
+    kf.update_position(56.001, 160.501)
+    assert not np.any(np.isnan(kf.P))
+    assert not np.any(np.isnan(kf.dx))

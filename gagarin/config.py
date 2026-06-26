@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass, replace
 from typing import Tuple, Any
 
@@ -35,15 +36,25 @@ class Config:
     flight_duration: float = 25.0
 
     def __post_init__(self):
-        assert self.window_size > 0, "window_size must be positive"
-        assert self.nmea_freq_hz > 0, "nmea_freq_hz must be positive"
-        assert self.coarse_azimuth_step > 0, "coarse_azimuth_step must be positive"
-        assert self.terrain_std_threshold >= 0, "terrain_std_threshold must be non-negative"
-        assert self.seed >= 0, "seed must be non-negative"
-        assert self.n_speed_hypotheses > 0, "n_speed_hypotheses must be positive"
-        assert self.flight_duration > 0, "flight_duration must be positive"
+        if self.window_size <= 0:
+            raise ValueError("window_size must be positive")
+        if self.nmea_freq_hz <= 0:
+            raise ValueError("nmea_freq_hz must be positive")
+        if self.coarse_azimuth_step <= 0:
+            raise ValueError("coarse_azimuth_step must be positive")
+        if self.terrain_std_threshold < 0:
+            raise ValueError("terrain_std_threshold must be non-negative")
+        if self.seed < 0:
+            raise ValueError("seed must be non-negative")
+        if self.n_speed_hypotheses <= 0:
+            raise ValueError("n_speed_hypotheses must be positive")
+        if self.flight_duration <= 0:
+            raise ValueError("flight_duration must be positive")
 
     def merge(self, updates: dict) -> "Config":
+        unknown = [k for k in updates if not hasattr(self, k)]
+        if unknown:
+            warnings.warn(f"Unknown config keys ignored: {unknown}")
         valid = {k: v for k, v in updates.items() if hasattr(self, k)}
         return replace(self, **valid)
 

@@ -7,8 +7,6 @@ import requests
 S3_BASE_URL = "https://copernicus-dem-30m.s3.eu-central-1.amazonaws.com"
 
 
-TILE_INDEX_URL = "https://copernicus-dem-30m.s3.eu-central-1.amazonaws.com/tileIndex.txt"
-
 
 def _lat_to_tile_y(lat: float) -> str:
     hemisphere = "N" if lat >= 0 else "S"

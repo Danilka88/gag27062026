@@ -106,8 +106,9 @@ class NavigationPipeline:
     def _check_adaptive_distance(self) -> bool:
         if len(self.readings) < 2:
             return True
-        dist_estimate = 50.0
-        self.total_distance += dist_estimate
+        speed = self.last_estimate["speed_ms"] if self.last_estimate else self.config.default_speed
+        dist = speed / self.config.nmea_freq_hz
+        self.total_distance += dist
         if self.total_distance - self.last_distance_trigger < self.config.adaptive_min_distance_m:
             return False
         self.last_distance_trigger = self.total_distance

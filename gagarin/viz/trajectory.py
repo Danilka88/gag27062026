@@ -16,7 +16,7 @@ def trajectory_map(
 ) -> go.Figure:
     try:
         lons, lats, elevation = dem.get_geographic_grid()
-    except Exception:
+    except (NotImplementedError, AttributeError):
         xs, ys, elevation = dem.get_elevation_grid()
         lons = xs
         lats = ys

@@ -37,7 +37,7 @@ def navigation_dashboard(
 
     try:
         lons, lats, elevation = dem.get_geographic_grid()
-    except Exception:
+    except (NotImplementedError, AttributeError):
         xs, ys, elevation = dem.get_elevation_grid()
         lons = xs
         lats = ys
@@ -78,7 +78,7 @@ def navigation_dashboard(
         est_lats = [e["position_lat"] for e in estimates]
         try:
             est_zs = dem.elevation_batch(np.array(est_lats), np.array(est_lons))
-        except Exception:
+        except (IndexError, ValueError):
             est_zs = [0] * len(est_lats)
         fig.add_trace(
             go.Scatter3d(
