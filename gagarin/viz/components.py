@@ -19,44 +19,48 @@ def terrain_traces(
             x=lon_grid if lon_grid.shape == terrain.elevation.shape else None,
             y=lat_grid if lat_grid.shape == terrain.elevation.shape else None,
             colorscale="Earth",
+            opacity=0.85,
             showscale=False,
             name="Рельеф",
+            lighting=dict(ambient=0.6, diffuse=0.8, fresnel=0.2),
+            contours=dict(z=dict(show=True, width=2, color="rgba(255,255,255,0.15)")),
         ),
         go.Scatter3d(
             x=trajectory.lons,
             y=trajectory.lats,
             z=trajectory.elevations,
             mode="lines+markers",
-            line=dict(color="red", width=5),
-            marker=dict(size=3, color="red"),
+            line=dict(color="red", width=6),
+            marker=dict(size=5, color="red", symbol="circle"),
             name="Истинный путь",
         ),
     ]
 
     if estimates:
-        elons = [e.position_lon for e in estimates]
-        elats = [e.position_lat for e in estimates]
+        elons = np.array([e.position_lon for e in estimates])
+        elats = np.array([e.position_lat for e in estimates])
+        ezs = terrain.elevation_at(elats, elons)
         traces.append(
             go.Scatter3d(
-                x=elons, y=elats,
-                z=[0] * len(elats),
+                x=elons, y=elats, z=ezs,
                 mode="lines+markers",
-                line=dict(color="lime", width=3, dash="dash"),
-                marker=dict(size=4, color="lime"),
+                line=dict(color="lime", width=4, dash="dash"),
+                marker=dict(size=6, color="lime", symbol="circle"),
                 name="Оценка TERCOM",
             ),
         )
 
     filtered = [e for e in estimates if e.filtered_lat is not None and e.filtered_lon is not None]
     if filtered:
+        flons = np.array([e.filtered_lon for e in filtered])
+        flats = np.array([e.filtered_lat for e in filtered])
+        fzs = terrain.elevation_at(flats, flons)
         traces.append(
             go.Scatter3d(
-                x=[e.filtered_lon for e in filtered],
-                y=[e.filtered_lat for e in filtered],
-                z=[0] * len(filtered),
+                x=flons, y=flats, z=fzs,
                 mode="lines+markers",
-                line=dict(color="yellow", width=3, dash="dot"),
-                marker=dict(size=3, color="yellow"),
+                line=dict(color="yellow", width=4, dash="dot"),
+                marker=dict(size=5, color="yellow", symbol="diamond"),
                 name="ESKF filtered",
             ),
         )

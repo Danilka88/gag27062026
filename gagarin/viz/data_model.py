@@ -35,6 +35,27 @@ class TerrainData:
     def elevation_std(self) -> float:
         return float(np.std(self.elevation))
 
+    def elevation_at(self, pts_lats: np.ndarray, pts_lons: np.ndarray) -> np.ndarray:
+        lat_idx = np.searchsorted(self.lats, pts_lats) - 1
+        lon_idx = np.searchsorted(self.lons, pts_lons) - 1
+        lat_idx = np.clip(lat_idx, 0, len(self.lats) - 2)
+        lon_idx = np.clip(lon_idx, 0, len(self.lons) - 2)
+
+        lat_frac = (pts_lats - self.lats[lat_idx]) / (self.lats[lat_idx + 1] - self.lats[lat_idx] + 1e-12)
+        lon_frac = (pts_lons - self.lons[lon_idx]) / (self.lons[lon_idx + 1] - self.lons[lon_idx] + 1e-12)
+
+        v00 = self.elevation[lat_idx, lon_idx]
+        v10 = self.elevation[lat_idx + 1, lon_idx]
+        v01 = self.elevation[lat_idx, lon_idx + 1]
+        v11 = self.elevation[lat_idx + 1, lon_idx + 1]
+
+        return (
+            v00 * (1 - lat_frac) * (1 - lon_frac)
+            + v10 * lat_frac * (1 - lon_frac)
+            + v01 * (1 - lat_frac) * lon_frac
+            + v11 * lat_frac * lon_frac
+        )
+
 
 @dataclass
 class TrajectoryData:

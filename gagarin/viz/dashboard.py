@@ -53,7 +53,9 @@ def navigation_dashboard(data: DashboardData) -> go.Figure:
             fig.add_trace(trace, row=3, col=1)
 
     fig.update_scenes(
-        aspectmode="data",
+        aspectmode="manual",
+        aspectratio=dict(x=1, y=1, z=0.4),
+        camera=dict(eye=dict(x=1.5, y=1.5, z=0.8)),
         xaxis_title="Долгота",
         yaxis_title="Широта",
         zaxis_title="Высота (м)",
@@ -193,7 +195,9 @@ def comparison_dashboard(data_syn: DashboardData, data_dram: DashboardData) -> g
 
     for scene_row, scene_col in [(1, 1), (1, 2)]:
         fig.update_scenes(
-            aspectmode="data",
+            aspectmode="manual",
+            aspectratio=dict(x=1, y=1, z=0.4),
+            camera=dict(eye=dict(x=1.5, y=1.5, z=0.8)),
             xaxis_title="Долгота",
             yaxis_title="Широта",
             zaxis_title="Высота (м)",
