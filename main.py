@@ -10,8 +10,6 @@ from gagarin.dem_loader import DEMLoader
 from gagarin.data_generator import DataGenerator, FlightParams
 from gagarin.pipeline import NavigationPipeline
 from gagarin.correlator import TERCOMCorrelator
-from gagarin.estimator import VelocityEstimator
-from gagarin.quality import assess_match
 from gagarin.viz import (
     correlation_heatmap,
     trajectory_map,
@@ -58,23 +56,21 @@ def run(config_path: str):
 
     gen = DataGenerator(dem, cfg)
 
-    true_az = 45.0
-    true_speed = 60.0
     bounds = dem.bounds
     center_lat = (bounds[1] + bounds[3]) / 2
     center_lon = (bounds[0] + bounds[2]) / 2
     params = FlightParams(
         start_lat=center_lat,
         start_lon=center_lon,
-        azimuth_deg=true_az,
-        speed_ms=true_speed,
-        duration_s=25.0,
+        azimuth_deg=cfg.default_azimuth,
+        speed_ms=cfg.default_speed,
+        duration_s=cfg.flight_duration,
     )
 
-    click.echo(f"True azimuth: {true_az:.1f}°, speed: {true_speed:.1f} m/s")
+    click.echo(f"True azimuth: {cfg.default_azimuth:.1f}°, speed: {cfg.default_speed:.1f} m/s")
     nmea_path = os.path.join(cfg.output_path, "flight_log.nmea")
     os.makedirs(cfg.output_path, exist_ok=True)
-    gen.generate_nmea_file(nmea_path, params, noise_std=2.0)
+    gen.generate_nmea_file(nmea_path, params, noise_std=cfg.noise_std)
     click.echo(f"NMEA log: {nmea_path}")
 
     pipeline = NavigationPipeline(dem, cfg)
@@ -90,9 +86,9 @@ def run(config_path: str):
                 results.append(est)
                 click.echo(
                     f"  az={est['azimuth_deg']:.1f}° "
-                    f"(true={true_az:.1f}°) "
+                    f"(true={cfg.default_azimuth:.1f}°) "
                     f"v={est['speed_ms']:.1f} m/s "
-                    f"(true={true_speed:.1f}) "
+                    f"(true={cfg.default_speed:.1f}) "
                     f"conf={est['confidence']:.3f}"
                 )
     elapsed = time.time() - start
@@ -101,8 +97,8 @@ def run(config_path: str):
     if results:
         first = results[0]
         click.echo(f"First estimate:")
-        click.echo(f"  Azimuth:  {first['azimuth_deg']:.1f}° (true: {true_az:.1f}°)")
-        click.echo(f"  Speed:    {first['speed_ms']:.1f} m/s (true: {true_speed:.1f} m/s)")
+        click.echo(f"  Azimuth:  {first['azimuth_deg']:.1f}° (true: {cfg.default_azimuth:.1f}°)")
+        click.echo(f"  Speed:    {first['speed_ms']:.1f} m/s (true: {cfg.default_speed:.1f} m/s)")
         click.echo(f"  Correlation: {first['correlation']:.4f}")
         click.echo(f"  Confidence: {first['confidence']:.3f}")
 
@@ -180,9 +176,7 @@ def _load_config(path: str) -> Config:
     if os.path.exists(full_path):
         with open(full_path) as f:
             data = json.load(f)
-        for k, v in data.items():
-            if hasattr(cfg, k):
-                object.__setattr__(cfg, k, v)
+        cfg = cfg.merge(data)
         click.echo(f"Loaded config from {full_path}")
     return cfg
 
@@ -232,7 +226,7 @@ def _generate_visualizations(
                     corr_matrix[i, j] = corr._ncc(obs_profile, ref)
     elif gen and params:
         gen.rng = np.random.default_rng(cfg.seed)
-        radar_alts = gen.generate_profile(params, noise_std=2.0)
+        radar_alts = gen.generate_profile(params, noise_std=cfg.noise_std)
         if len(radar_alts) >= cfg.window_size:
             obs_profile = cfg.baro_altitude - radar_alts[:cfg.window_size]
             for i, az in enumerate(azimuths):

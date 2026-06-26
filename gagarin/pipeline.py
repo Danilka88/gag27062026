@@ -135,7 +135,6 @@ class NavigationPipeline:
         quality = assess_match(match)
         estimate["quality"] = quality
         estimate["timestamp"] = reading.timestamp
-        estimate["terrain_roughness"] = match.terrain_roughness
 
         self.last_estimate = estimate
 

@@ -47,8 +47,6 @@ class ErrorStateKalmanFilter:
         pred_lon = self.lon + np.degrees(self.delta[1] / (self._R_earth * cos_lat))
 
         z = np.array([lat - pred_lat, lon - pred_lon])
-        z[0] = np.degrees(z[0])
-        z[1] = np.degrees(z[1])
 
         H = np.zeros((2, self.dim))
         H[0, 0] = 1.0 / self._R_earth
