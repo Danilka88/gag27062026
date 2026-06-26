@@ -9,8 +9,8 @@ import click
 from gagarin.dem_loader import DEMLoader
 from gagarin.data_generator import DataGenerator, FlightParams
 from gagarin.pipeline import NavigationPipeline
-from gagarin.correlator import TERCOMCorrelator, CorrelationMetrics, HypothesisSearch
-from gagarin.geo_utils import offset_coords, offset_coords_batch
+from gagarin.correlator import CorrelationMetrics, HypothesisSearch
+from gagarin.geo_utils import offset_coords_batch
 from gagarin.viz import (
     correlation_heatmap,
     trajectory_map,
@@ -18,6 +18,7 @@ from gagarin.viz import (
     navigation_dashboard,
     comparison_dashboard,
     save_html,
+    build_dashboard_data,
 )
 from gagarin.config import Config
 
@@ -124,7 +125,7 @@ def run(config_path: str, compare: bool):
         click.echo(f"\n--- Results ({len(results)} estimates in {elapsed:.2f}s) ---")
         if results:
             first = results[0]
-            click.echo(f"First estimate:")
+            click.echo("First estimate:")
             click.echo(f"  Azimuth:  {first.azimuth_deg:.1f}° (true: {cfg.default_azimuth:.1f}°)")
             click.echo(f"  Speed:    {first.speed_ms:.1f} m/s (true: {cfg.default_speed:.1f} m/s)")
             click.echo(f"  Correlation: {first.correlation:.4f}")
@@ -141,11 +142,11 @@ def run(config_path: str, compare: bool):
                 f, indent=2, default=str,
             )
         click.echo(f"Estimates: {json_path} ({len(results)} estimates)")
-        _generate_visualizations(dem, results, params, cfg, gen, pipeline, out_dir)
+        _generate_visualizations(dem, results, params, cfg, gen, pipeline, out_dir, dem_name=name)
         click.echo(f"Visualizations saved to {out_dir}/")
 
         all_data[name] = dict(
-            dem=dem, results=results, params=params, pipeline=pipeline,
+            dem=dem, results=results, params=params, cfg=cfg, pipeline=pipeline,
         )
 
     if compare and "synthetic" in all_data and "dramatic" in all_data:
@@ -153,35 +154,36 @@ def run(config_path: str, compare: bool):
         click.echo("Generating comparison dashboard...")
         click.echo("=" * 60)
 
-        cfg_cmp = Config.default()
-        n_az = int(360 / cfg_cmp.coarse_azimuth_step)
-        n_sp = cfg_cmp.n_speed_hypotheses
-        azimuths = np.arange(0, 360, cfg_cmp.coarse_azimuth_step)
-        speeds = np.linspace(cfg_cmp.speed_range_ms[0], cfg_cmp.speed_range_ms[1], n_sp)
-
         syn = all_data["synthetic"]
         dram = all_data["dramatic"]
         syn_pipeline = syn["pipeline"]
         dram_pipeline = dram["pipeline"]
+        cfg_cmp = syn["cfg"]
 
-        obs_syn = syn_pipeline.last_result.observed_profile if syn_pipeline.last_result else np.array([])
-        ref_syn = syn_pipeline.last_result.reference_profile if syn_pipeline.last_result else np.array([])
-        obs_dram = dram_pipeline.last_result.observed_profile if dram_pipeline.last_result else np.array([])
-        ref_dram = dram_pipeline.last_result.reference_profile if dram_pipeline.last_result else np.array([])
-
+        n_sp = cfg_cmp.n_speed_hypotheses
+        azimuths = np.arange(0, 360, cfg_cmp.coarse_azimuth_step)
+        speeds = np.linspace(cfg_cmp.speed_range_ms[0], cfg_cmp.speed_range_ms[1], n_sp)
         traj_lats, traj_lons = _generate_trajectory(syn["params"], cfg_cmp)
 
-        corr_syn, _, _ = _build_correlation_matrix(syn["dem"], cfg_cmp, pipeline=syn_pipeline)
-        corr_dram, _, _ = _build_correlation_matrix(dram["dem"], cfg_cmp, pipeline=dram_pipeline)
+        corr_syn, obs_syn, ref_syn = _build_correlation_matrix(syn["dem"], cfg_cmp, pipeline=syn_pipeline)
+        corr_dram, obs_dram, ref_dram = _build_correlation_matrix(dram["dem"], cfg_cmp, pipeline=dram_pipeline)
 
-        fig_cmp = comparison_dashboard(
-            syn["dem"], dram["dem"],
+        dash_syn = build_dashboard_data(
+            syn["dem"], syn["results"], syn["params"], cfg_cmp,
             traj_lats, traj_lons,
-            syn["results"], dram["results"],
-            corr_syn, corr_dram,
-            obs_syn, ref_syn, obs_dram, ref_dram,
+            corr_syn, obs_syn, ref_syn,
             azimuths, speeds,
+            dem_name="Synthetic",
         )
+        dash_dram = build_dashboard_data(
+            dram["dem"], dram["results"], dram["params"], cfg_cmp,
+            traj_lats, traj_lons,
+            corr_dram, obs_dram, ref_dram,
+            azimuths, speeds,
+            dem_name="Dramatic",
+        )
+
+        fig_cmp = comparison_dashboard(dash_syn, dash_dram)
 
         cmp_path = os.path.join(cfg.output_path, "comparison_dashboard.html")
         save_html(fig_cmp, cmp_path)
@@ -323,11 +325,11 @@ def _generate_visualizations(
     gen: DataGenerator = None,
     pipeline: NavigationPipeline = None,
     out_dir: str = None,
+    dem_name: str = "DEM",
 ):
     out = out_dir or cfg.output_path
     os.makedirs(out, exist_ok=True)
 
-    n_az = int(360 / cfg.coarse_azimuth_step)
     n_sp = cfg.n_speed_hypotheses
     azimuths = np.arange(0, 360, cfg.coarse_azimuth_step)
     speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], n_sp)
@@ -368,13 +370,14 @@ def _generate_visualizations(
         save_html(fig_profile, os.path.join(out, "profile_comparison.html"))
         click.echo("  [viz] profile_comparison.html")
 
-    fig_dash = navigation_dashboard(
-        dem,
+    dash_data = build_dashboard_data(
+        dem, results, params, cfg,
         traj_lats, traj_lons,
-        results[:5] if results else [],
-        azimuths, speeds, corr_matrix,
-        None, None,
+        corr_matrix, obs_profile, ref_profile,
+        azimuths, speeds,
+        dem_name=dem_name,
     )
+    fig_dash = navigation_dashboard(dash_data)
     save_html(fig_dash, os.path.join(out, "dashboard.html"))
     click.echo("  [viz] dashboard.html")
 

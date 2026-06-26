@@ -3,7 +3,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from gagarin.dem_loader import DEMLoader
-from gagarin.viz.utils import TEMPLATE, TRUE_LINE, ESTIMATED_LINE, get_grid_or_fallback
+from gagarin.viz.utils import get_grid_or_fallback
 
 
 def trajectory_map(
