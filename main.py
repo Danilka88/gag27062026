@@ -27,6 +27,15 @@ def cli():
 
 
 @cli.command()
+@click.option("--output", "-o", default="data/dem/dramatic_kamchatka.tif", help="Output path")
+@click.option("--nx", default=400, type=int, help="Width in pixels")
+@click.option("--ny", default=400, type=int, help="Height in pixels")
+def generate_dem(output: str, nx: int, ny: int):
+    _generate_dramatic_dem(output, nx, ny)
+    click.echo(f"Dramatic DEM saved to {output}")
+
+
+@cli.command()
 @click.option("--place", default="kamchatka", help="Place name or lat,lon")
 @click.option("--output-dir", "-o", default="data/dem", help="Output directory")
 @click.option("--margin", "-m", default=0.15, type=float, help="Margin in degrees")
@@ -44,67 +53,84 @@ def download_dem(place: str, output_dir: str, margin: float):
 
 @cli.command()
 @click.argument("config_path", default="config.json", required=False)
-def run(config_path: str):
+@click.option("--compare", "-c", is_flag=True, help="Also run on dramatic DEM for comparison")
+def run(config_path: str, compare: bool):
     cfg = _load_config(config_path)
-    dem_path = _find_dem(cfg.dem_path)
-    if not dem_path:
-        click.echo("No DEM found. Run 'python main.py download-dem' first.", err=True)
-        sys.exit(1)
 
-    click.echo(f"Loading DEM: {dem_path}")
-    dem = DEMLoader(dem_path)
-    click.echo(f"DEM loaded: {dem.bounds}")
+    synthetic = os.path.join(cfg.dem_path, "synthetic_kamchatka.tif")
+    dramatic = os.path.join(cfg.dem_path, "dramatic_kamchatka.tif")
+    dem_paths = []
+    if os.path.exists(synthetic):
+        dem_paths.append(("synthetic", synthetic))
+    if compare and os.path.exists(dramatic):
+        dem_paths.append(("dramatic", dramatic))
+    if not dem_paths:
+        found = _find_dem(cfg.dem_path)
+        if found:
+            dem_paths.append(("discovered", found))
 
-    gen = DataGenerator(dem, cfg)
+    for name, dem_path in dem_paths:
+        if not dem_path:
+            click.echo(f"No DEM found for {name}.", err=True)
+            continue
 
-    bounds = dem.bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
-    params = FlightParams(
-        start_lat=center_lat,
-        start_lon=center_lon,
-        azimuth_deg=cfg.default_azimuth,
-        speed_ms=cfg.default_speed,
-        duration_s=cfg.flight_duration,
-    )
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Running on {name.upper()} DEM: {dem_path}")
+        click.echo(f"{'='*60}")
+        dem = DEMLoader(dem_path)
+        click.echo(f"DEM loaded: {dem.bounds}")
 
-    click.echo(f"True azimuth: {cfg.default_azimuth:.1f}°, speed: {cfg.default_speed:.1f} m/s")
-    nmea_path = os.path.join(cfg.output_path, "flight_log.nmea")
-    os.makedirs(cfg.output_path, exist_ok=True)
-    gen.generate_nmea_file(nmea_path, params, noise_std=cfg.noise_std)
-    click.echo(f"NMEA log: {nmea_path}")
+        gen = DataGenerator(dem, cfg)
 
-    pipeline = NavigationPipeline(dem, cfg)
-    pipeline.initialize(center_lat, center_lon)
+        bounds = dem.bounds
+        center_lat = (bounds[1] + bounds[3]) / 2
+        center_lon = (bounds[0] + bounds[2]) / 2
+        params = FlightParams(
+            start_lat=center_lat,
+            start_lon=center_lon,
+            azimuth_deg=cfg.default_azimuth,
+            speed_ms=cfg.default_speed,
+            duration_s=cfg.flight_duration,
+        )
 
-    click.echo("\n--- Processing NMEA stream ---")
-    results = []
-    start = time.time()
-    with open(nmea_path) as f:
-        for line in f:
-            est = pipeline.feed_line(line.strip())
-            if est is not None:
-                results.append(est)
-                click.echo(
-                    f"  az={est.azimuth_deg:.1f}° "
-                    f"(true={cfg.default_azimuth:.1f}°) "
-                    f"v={est.speed_ms:.1f} m/s "
-                    f"(true={cfg.default_speed:.1f}) "
-                    f"conf={est.confidence:.3f}"
-                )
-    elapsed = time.time() - start
+        click.echo(f"True azimuth: {cfg.default_azimuth:.1f}°, speed: {cfg.default_speed:.1f} m/s")
+        nmea_path = os.path.join(cfg.output_path, f"flight_log_{name}.nmea")
+        os.makedirs(cfg.output_path, exist_ok=True)
+        gen.generate_nmea_file(nmea_path, params, noise_std=cfg.noise_std)
+        click.echo(f"NMEA log: {nmea_path}")
 
-    click.echo(f"\n--- Results ({len(results)} estimates in {elapsed:.2f}s) ---")
-    if results:
-        first = results[0]
-        click.echo(f"First estimate:")
-        click.echo(f"  Azimuth:  {first.azimuth_deg:.1f}° (true: {cfg.default_azimuth:.1f}°)")
-        click.echo(f"  Speed:    {first.speed_ms:.1f} m/s (true: {cfg.default_speed:.1f} m/s)")
-        click.echo(f"  Correlation: {first.correlation:.4f}")
-        click.echo(f"  Confidence: {first.confidence:.3f}")
+        pipeline = NavigationPipeline(dem, cfg)
+        pipeline.initialize(center_lat, center_lon)
 
-    _generate_visualizations(dem, results, params, cfg, gen, pipeline)
-    click.echo("\nVisualizations saved to data/output/")
+        click.echo("\n--- Processing NMEA stream ---")
+        results = []
+        start = time.time()
+        with open(nmea_path) as f:
+            for line in f:
+                est = pipeline.feed_line(line.strip())
+                if est is not None:
+                    results.append(est)
+                    click.echo(
+                        f"  az={est.azimuth_deg:.1f}° "
+                        f"(true={cfg.default_azimuth:.1f}°) "
+                        f"v={est.speed_ms:.1f} m/s "
+                        f"(true={cfg.default_speed:.1f}) "
+                        f"conf={est.confidence:.3f}"
+                    )
+        elapsed = time.time() - start
+
+        click.echo(f"\n--- Results ({len(results)} estimates in {elapsed:.2f}s) ---")
+        if results:
+            first = results[0]
+            click.echo(f"First estimate:")
+            click.echo(f"  Azimuth:  {first.azimuth_deg:.1f}° (true: {cfg.default_azimuth:.1f}°)")
+            click.echo(f"  Speed:    {first.speed_ms:.1f} m/s (true: {cfg.default_speed:.1f} m/s)")
+            click.echo(f"  Correlation: {first.correlation:.4f}")
+            click.echo(f"  Confidence: {first.confidence:.3f}")
+
+        out_dir = os.path.join(cfg.output_path, name)
+        _generate_visualizations(dem, results, params, cfg, gen, pipeline, out_dir)
+        click.echo(f"\nVisualizations saved to {out_dir}/")
 
 
 @cli.command()
@@ -241,8 +267,9 @@ def _generate_visualizations(
     cfg: Config,
     gen: DataGenerator = None,
     pipeline: NavigationPipeline = None,
+    out_dir: str = None,
 ):
-    out = cfg.output_path
+    out = out_dir or cfg.output_path
     os.makedirs(out, exist_ok=True)
 
     n_az = int(360 / cfg.coarse_azimuth_step)
@@ -295,6 +322,70 @@ def _generate_visualizations(
     )
     save_html(fig_dash, os.path.join(out, "dashboard.html"))
     click.echo("  [viz] dashboard.html")
+
+
+def _generate_dramatic_dem(path: str, nx: int = 400, ny: int = 400):
+    import xarray as xr
+
+    np.random.seed(42)
+    xs = np.linspace(0, 1, nx)
+    ys = np.linspace(0, 1, ny)
+    xx, yy = np.meshgrid(xs, ys)
+
+    elev = np.zeros((ny, nx))
+
+    peaks = [
+        (0.2, 0.3, 0.08, 2500),
+        (0.5, 0.2, 0.12, 2000),
+        (0.7, 0.5, 0.1, 2200),
+        (0.3, 0.7, 0.15, 1800),
+        (0.8, 0.8, 0.09, 1500),
+        (0.5, 0.6, 0.06, 3000),
+    ]
+
+    for px, py, sigma, h in peaks:
+        peak = h * np.exp(-((xx - px) ** 2 + (yy - py) ** 2) / (2 * sigma ** 2))
+        crater = np.exp(-((xx - px) ** 2 + (yy - py) ** 2) / (2 * (sigma * 0.3) ** 2))
+        peak = peak - crater * h * 0.3
+        elev += peak
+
+    ridge_ys = [0.1, 0.25, 0.6, 0.9]
+    for cy in ridge_ys:
+        ridge = np.exp(-((yy - cy) ** 2) / 0.002)
+        ridge *= 800 * (1 + np.sin(xx * 8 * np.pi) * 0.3)
+        elev += ridge
+
+    canyon_x = 0.85
+    canyon = np.exp(-((xx - canyon_x) ** 2) / 0.005)
+    canyon_height = 600 * (1 + np.sin(yy * 6 * np.pi) * 0.2)
+    elev -= canyon * canyon_height
+
+    river = np.exp(-((yy - 0.8) ** 2) / 0.008)
+    river *= np.exp(-((xx - 0.3) ** 2) / 0.15)
+    elev -= river * 400
+
+    noise = np.random.randn(ny, nx) * 15
+    noise = np.maximum(noise, -30)
+    elev += noise
+
+    elev = np.clip(elev, 0, 3500)
+    gauss = np.exp(-((xx - 0.5) ** 2 + (yy - 0.5) ** 2) / 0.5)
+    elev = elev * (0.6 + 0.4 * gauss)
+    elev = np.maximum(elev, 10)
+
+    lats = np.linspace(55.97, 56.23, ny)
+    lons = np.linspace(160.53, 160.77, nx)
+
+    ds = xr.DataArray(
+        elev.astype(np.float32),
+        dims=("y", "x"),
+        coords={"y": lats, "x": lons},
+    )
+    ds.rio.write_crs("EPSG:4326", inplace=True)
+    ds.rio.set_spatial_dims("x", "y", inplace=True)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    ds.rio.to_raster(path)
+    return elev, lats, lons
 
 
 if __name__ == "__main__":
