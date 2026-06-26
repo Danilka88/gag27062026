@@ -4,21 +4,35 @@
 
 Система **TERCOM**-навигации для БПЛА без GNSS. Дрон измеряет высоту рельефа радаром, сравнивает с цифровой картой высот (DEM) и определяет: где он, куда летит и с какой скоростью.
 
+Включает **наземную систему предварительной подготовки** (pre-processing) — анализ информативности рельефа вдоль маршрута до вылета, выявление участков риска false fix.
+
 ---
 
-## 2. Workflow (шаг за шагом)
+## 2. Workflow
+
+### Pre-flight (наземная подготовка)
 
 1. **Загрузка DEM** — GeoTIFF читается через `rioxarray`, настраивается CRS-трансформер (pyproj) и билинейный интерполятор
-2. **Старт позиции** — задаются начальные координаты (центр DEM)
-3. **Симуляция полёта** — `DataGenerator` генерирует NMEA-строки (`$GPGGA`) с шумом: `radar_altitude = baro_altitude - true_terrain + noise`
-4. **Парсинг NMEA** — `NMEAParser` разбирает строки в `NMEAReading` (timestamp, altitude)
-5. **Буферизация** — `NMEABuffer` накапливает 200 отсчётов в скользящем окне (deque)
-6. **Извлечение профиля** — `get_profile()` = `baro_altitude - radar_altitude` (профиль рельефа под дроном)
-7. **Корреляция TERCOM** — `HypothesisSearch`: coarse (36 азимутов × 10 скоростей = 360 гипотез) → fine (0.5° вокруг top-5). `CorrelationMetrics.ncc()` — нормализованная кросс-корреляция
-8. **Оценка состояния** — `VelocityEstimator.estimate()`: азимут, скорость, позиция с lag-коррекцией
-9. **Dead Reckoning** — смещение центра поиска на основе оцененной скорости
-10. **ESKF** — `ErrorStateKalmanFilter` (6D): predict → update_position → update_velocity → reset, сглаживает скачки
-11. **Визуализация** — HTML-дашборд с 5 графиками, вкладки Synthetic/Dramatic
+2. **Загрузка waypoints** — CSV с колонками lat, lon
+3. **TerrainAnalyzer** — gradient magnitude, std window, Laplacian, info_map
+4. **Интерполяция маршрута** — равномерные шаги ~200 м между waypoints
+5. **Fingerprint вычисление** — для каждой точки: reference profile, NCC при смещении ±1..15 grid cells, Minima Ratio, roughness difference
+6. **Адаптивный коридор** — `width = max(2 × ins_drift × segment + 2 × dem_res, 500 м)`
+7. **Упаковка** — SQLite (R-Tree spatial index) + GeoTIFF info_map + metadata.json
+8. **Визуализация** — `mission_viewer.html` (3 панели: карта, профиль, fingerprint матрица)
+
+### Бортовой цикл (каждые 0.1 с)
+
+1. **Старт позиции** — начальные координаты (центр DEM). Валидация: ValueError если lat/lon вне DEM
+2. **Симуляция полёта** — `DataGenerator` генерирует NMEA-строки (`$GPGGA`) с шумом
+3. **Парсинг NMEA** — `NMEAParser` разбирает строки в `NMEAReading` (timestamp, altitude)
+4. **Буферизация** — `NMEABuffer` накапливает 200 отсчётов в скользящем окне (deque). `advance_distance()` — адаптивная дистанция
+5. **Извлечение профиля** — `get_profile()` = `baro_altitude - radar_altitude` (профиль рельефа). `profile.py` валидирует std и NaN
+6. **Корреляция TERCOM** — `HypothesisSearch`: coarse (36 × 10 = 360 гипотез) → fine (0.5° вокруг top-5, ±15 м/с). NCC без anti-correlation бага
+7. **Оценка состояния** — `VelocityEstimator.estimate()`: азимут, скорость, позиция с lag-коррекцией
+8. **Dead Reckoning** — смещение центра поиска. Fallback: если `match = None`, ESKF predict + `_dead_reckon_forward()` (не «зависает»)
+9. **ESKF** — `ErrorStateKalmanFilter` (6D): predict → update_position → update_velocity → reset, сглаживает скачки
+10. **Визуализация** — HTML-дашборд с 5 графиками, вкладки Synthetic/Dramatic
 
 ---
 
@@ -66,6 +80,7 @@
 | **rioxarray** + **xarray** | Чтение GeoTIFF |
 | **pyproj** | Трансформация CRS |
 | **pynmea2** | Парсинг NMEA |
+| **sqlite3** | Хранение fingerprint-ов (R-Tree spatial index) |
 | **plotly 6.0+** | Интерактивные HTML-графики |
 | **click** | CLI |
 | **pytest** | 32 теста за ~0.3 с |
@@ -104,7 +119,7 @@
 
 ## 6. Визуализация
 
-Дашборд (`data/output/dashboard.html`):
+### Дашборд после полёта (`data/output/dashboard.html`)
 
 | График | Тип | Суть |
 |--------|-----|------|
@@ -114,7 +129,17 @@
 | **Ошибки азимута и скорости** | 2 линии | Розовый (°), голубой (м/с) |
 | **Карта корреляции** | Heatmap | NCC для азимут × скорость, ★ — лучшее |
 
-Каждый график содержит подпись с ✅⚠️❌ и числовыми порогами. Интерфейс: GitHub Dark, 5 карточек, табы Synthetic/Dramatic.
+Каждый график содержит подпись с ✅⚠️❌ и числовыми порогами. Интерфейс: GitHub Dark, 5 карточек, табы Synthetic/Dramatic. Nav-ссылка на mission viewer в шапке.
+
+### Mission Viewer — pre-flight (`data/output/mission_viewer.html`)
+
+| Панель | Суть |
+|--------|------|
+| **Карта маршрута** | Info heatmap + scatter по Minima Ratio (зелёный/оранжевый/красный) |
+| **Профиль информативности** | std высот + gradient + Minima Ratio вдоль трека |
+| **Fingerprint-матрица** | NCC при смещении от трека — риск false fix |
+
+Nav-ссылка на dashboard в шапке. Оба HTML лежат рядом, ссылаются друг на друга.
 
 ---
 
@@ -132,9 +157,11 @@
 ```bash
 gagarin run [config.json]                   # прогон на одном DEM
 gagarin run [config.json] --compare         # сравнение Synthetic vs Dramatic
+gagarin prepare-route --waypoints file.csv  # pre-flight: fingerpints + mission package
+gagarin viz-mission mission_pkg             # pre-flight viewer (3 панели)
 gagarin generate-dem                        # создать синтетический DEM
 gagarin download-dem --place kamchatka      # скачать Copernicus DEM
 gagarin analyze flight.nmea --dem <file>    # анализ готового NMEA
 ```
 
-Результат: `data/output/estimates.json` + `dashboard.html` + отдельные HTML-графики.
+Результат: `data/output/estimates.json` + `dashboard.html` + `mission_viewer.html` + отдельные HTML-графики.

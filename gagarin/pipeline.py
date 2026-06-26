@@ -46,6 +46,12 @@ class NavigationPipeline:
         return self.center_lat is not None
 
     def initialize(self, lat: float, lon: float):
+        b = self.dem.bounds
+        if not (b[1] <= lat <= b[3] and b[0] <= lon <= b[2]):
+            raise ValueError(
+                f"Start position ({lat:.4f}, {lon:.4f}) is outside DEM bounds "
+                f"({b[1]:.4f}–{b[3]:.4f} lat, {b[0]:.4f}–{b[2]:.4f} lon)"
+            )
         self.center_lat = lat
         self.center_lon = lon
         if self.kf:
@@ -74,6 +80,9 @@ class NavigationPipeline:
 
         match = self.correlator.search(profile, self.center_lat, self.center_lon)
         if match is None:
+            if self.kf:
+                self.kf.predict()
+            self._dead_reckon_forward()
             return None
 
         self.last_result = match
@@ -105,6 +114,20 @@ class NavigationPipeline:
 
         self.center_lat += np.degrees(dr_lat + corr_lat)
         self.center_lon += np.degrees(dr_lon + corr_lon)
+
+    def _dead_reckon_forward(self):
+        dt = 1.0 / self.config.nmea_freq_hz
+        if self.last_estimate:
+            az_rad = np.radians(self.last_estimate.azimuth_deg)
+            speed = self.last_estimate.speed_ms
+        else:
+            az_rad = np.radians(self.config.default_azimuth)
+            speed = self.config.default_speed
+        cos_lat = np.cos(np.radians(self.center_lat))
+        dlat = speed * np.cos(az_rad) * dt / EARTH_RADIUS
+        dlon = speed * np.sin(az_rad) * dt / (EARTH_RADIUS * cos_lat)
+        self.center_lat += np.degrees(dlat)
+        self.center_lon += np.degrees(dlon)
 
     def _apply_kalman(self, estimate: NavigationEstimate):
         if not self.kf:

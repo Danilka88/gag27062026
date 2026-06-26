@@ -27,7 +27,6 @@ def test_estimate():
 
 
 def test_offset():
-    import math
     lat, lon = offset_coords(56.0, 160.5, 0, 0.0)
     assert abs(lat - 56.0) < 1e-10
     assert abs(lon - 160.5) < 1e-10

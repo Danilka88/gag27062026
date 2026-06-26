@@ -16,6 +16,9 @@ h1{font-size:22px;font-weight:600;margin-bottom:12px;letter-spacing:-0.3px}
 .tab{padding:8px 20px;border-radius:20px;border:1px solid #30363d;background:0 0;color:#8b949e;font-size:14px;cursor:pointer;transition:.2s;font-family:inherit}
 .tab:hover{color:#e6edf3;border-color:#58a6ff}
 .tab.active{background:#58a6ff;color:#fff;border-color:#58a6ff}
+.nav-links{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.nav-link{padding:6px 16px;border-radius:16px;border:1px solid #30363d;background:#161b22;color:#8b949e;font-size:13px;cursor:pointer;transition:.2s;text-decoration:none}
+.nav-link:hover{color:#e6edf3;border-color:#58a6ff;background:#1c2333}
 .summaries{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:12px 16px;background:#161b22;border-radius:8px;border:1px solid #30363d;font-size:13px;color:#8b949e;line-height:1.6}
 .summary-line strong{color:#e6edf3}
 main{max-width:1200px;margin:0 auto;padding:0 24px 48px;display:flex;flex-direction:column;gap:20px}
@@ -33,6 +36,7 @@ main{max-width:1200px;margin:0 auto;padding:0 24px 48px;display:flex;flex-direct
 <body>
 <header>
 <h1>TERCOM Навигация</h1>
+<div class="nav-links">{NAV_LINKS}</div>
 <div class="tabs">
 <button class="tab active" data-tab="syn" onclick="switchTab('syn')">Synthetic</button>
 <button class="tab" data-tab="dram" onclick="switchTab('dram')">Dramatic</button>

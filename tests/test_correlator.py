@@ -1,13 +1,10 @@
 import numpy as np
-import pytest
 
-from gagarin.correlator import TERCOMCorrelator, CorrelationMetrics
-from gagarin.config import Config
+from gagarin.correlator import CorrelationMetrics
 
 
 def make_dummy_dem():
     import xarray as xr
-    import rioxarray
 
     nx, ny = 200, 200
     data = np.zeros((ny, nx))

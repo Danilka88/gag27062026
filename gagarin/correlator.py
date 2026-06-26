@@ -132,8 +132,8 @@ class HypothesisSearch:
             )
             n_speeds = max(5, cfg.n_speed_hypotheses // 3)
             fine_speeds = np.linspace(
-                max(cfg.speed_range_ms[0], hyp.speed_ms - 15),
-                min(cfg.speed_range_ms[1], hyp.speed_ms + 15),
+                max(cfg.speed_range_ms[0], hyp.speed_ms - cfg.fine_speed_margin),
+                min(cfg.speed_range_ms[1], hyp.speed_ms + cfg.fine_speed_margin),
                 n_speeds,
             )
             fine_hypotheses.extend(self.search_grid(profile, center_lat, center_lon, fine_azs, fine_speeds))
@@ -185,7 +185,7 @@ class TERCOMCorrelator:
             observed_profile.astype(np.float64),
             ref_profile.astype(np.float64),
         )
-        best_lag = int(np.argmax(np.abs(corr_full))) - len(observed_profile) // 2
+        best_lag = int(np.argmax(corr_full)) - len(observed_profile) // 2
 
         confidence = CorrelationMetrics.compute_confidence(corr_full, roughness)
 

@@ -1,4 +1,4 @@
-from typing import List, Optional, Iterator
+from typing import List, Iterator
 from dataclasses import dataclass
 import numpy as np
 import math

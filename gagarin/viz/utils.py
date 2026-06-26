@@ -1,4 +1,5 @@
-from typing import Tuple
+import os
+from typing import Optional, Tuple
 import json
 import numpy as np
 import plotly.graph_objects as go
@@ -28,7 +29,15 @@ def save_html(fig: go.Figure, path: str):
     pio.write_html(fig, path, auto_open=False)
 
 
-def save_dashboard(charts: list, path: str):
+def save_dashboard(charts: list, path: str, mission_viewer_path: Optional[str] = None):
+    nav_links = ""
+    if mission_viewer_path and os.path.exists(mission_viewer_path):
+        rel = os.path.relpath(mission_viewer_path, os.path.dirname(path))
+        nav_links += (
+            f'<a class="nav-link" href="{rel}" target="_blank">'
+            f"Pre-flight Analysis &rarr;</a>"
+        )
+
     cards_html = "\n".join(
         f'<div class="card">'
         f'<div class="card-title">{c["title"]}</div>'
@@ -47,7 +56,8 @@ def save_dashboard(charts: list, path: str):
         for c in charts
     ]
     charts_json = json.dumps(charts_data).replace("</", "<\\/")
-    html = HTML_TEMPLATE.replace("{SUMMARIES}", "", 1)
+    html = HTML_TEMPLATE.replace("{NAV_LINKS}", nav_links, 1)
+    html = html.replace("{SUMMARIES}", "", 1)
     html = html.replace("{CARDS_HTML}", cards_html, 1)
     html = html.replace("{CHARTS_JSON}", charts_json, 1)
     with open(path, "w") as f:

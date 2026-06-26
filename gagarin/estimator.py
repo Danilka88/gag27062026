@@ -1,5 +1,5 @@
 from typing import Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 
 from gagarin.correlator import MatchResult

@@ -11,6 +11,7 @@ from gagarin.data_generator import DataGenerator, FlightParams
 from gagarin.pipeline import NavigationPipeline
 from gagarin.correlator import CorrelationMetrics, HypothesisSearch
 from gagarin.geo_utils import offset_coords_batch
+from gagarin.preprocess import MissionPreprocessor, Waypoint
 from gagarin.viz import (
     correlation_heatmap,
     trajectory_map,
@@ -187,8 +188,73 @@ def run(config_path: str, compare: bool):
         charts = unified_dashboard(dash_syn, dash_dram)
 
         dash_path = os.path.join(cfg.output_path, "dashboard.html")
-        save_dashboard(charts, dash_path)
+        viewer_path = os.path.join(cfg.output_path, "mission_viewer.html")
+        save_dashboard(charts, dash_path, mission_viewer_path=viewer_path if os.path.exists(viewer_path) else None)
         click.echo(f"Unified dashboard: {dash_path}")
+
+
+@cli.command()
+@click.option("--waypoints", "-w", required=True, help="CSV file with lat,lon waypoints")
+@click.option("--dem", "-d", default=None, help="Path to DEM file")
+@click.option("--azimuth", "-az", type=float, default=45.0, help="Expected true azimuth (°)")
+@click.option("--speed", "-sp", type=float, default=60.0, help="Expected true speed (m/s)")
+@click.option("--ins-drift", type=float, default=0.1, help="INS drift rate (fraction of distance)")
+@click.option("--output", "-o", default="mission_package", help="Output directory")
+def prepare_route(waypoints: str, dem: str, azimuth: float, speed: float, ins_drift: float, output: str):
+    cfg = Config.default()
+    if not dem:
+        dem = _find_dem(cfg.dem_path)
+    if not dem:
+        click.echo("No DEM found. Use --dem or run download-dem first.", err=True)
+        sys.exit(1)
+
+    click.echo(f"Loading DEM: {dem}")
+    dem_loader = DEMLoader(dem)
+    click.echo(f"DEM bounds: {dem_loader.bounds}")
+
+    wps = []
+    with open(waypoints) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("lat"):
+                continue
+            parts = line.split(",")
+            wps.append(Waypoint(lat=float(parts[0]), lon=float(parts[1])))
+
+    click.echo(f"Loaded {len(wps)} waypoints")
+
+    preprocessor = MissionPreprocessor(dem_loader, cfg)
+    click.echo("Computing terrain fingerprints along route...")
+    fingerprints, corridor_w = preprocessor.compute_route_fingerprints(
+        wps, azimuth, speed, ins_drift_rate=ins_drift,
+    )
+    click.echo(f"Computed {len(fingerprints)} fingerprints, corridor width: {corridor_w:.0f}m")
+
+    pkg = preprocessor.build_mission_package(
+        fingerprints, wps, azimuth, speed, corridor_w, output_dir=output,
+    )
+    click.echo(f"\nMission package saved to {pkg.path}/")
+    click.echo(f"  Waypoints: {pkg.n_waypoints}")
+    click.echo(f"  Fingerprints: {pkg.n_fingerprints}")
+    click.echo(f"  Info map: {pkg.info_map_path}")
+    click.echo(f"  DB: {pkg.path}/fingerprints.db")
+
+
+@cli.command()
+@click.argument("mission_dir", default="mission_package", required=False)
+@click.option("--output", "-o", default=None, help="Output HTML path (default: data/output/mission_viewer.html)")
+@click.option("--dashboard", "-d", default=None, help="Path to dashboard.html for nav link")
+def viz_mission(mission_dir: str, output: Optional[str], dashboard: Optional[str]):
+    from gagarin.viz import mission_viewer as render_mission
+    cfg = Config.default()
+    if output is None:
+        output = os.path.join(cfg.output_path, "mission_viewer.html")
+    if dashboard is None:
+        dash_candidate = os.path.join(cfg.output_path, "dashboard.html")
+        dashboard = dash_candidate if os.path.exists(dash_candidate) else None
+    click.echo(f"Loading mission package from {mission_dir}...")
+    out_path = render_mission(mission_dir, output, dashboard_path=dashboard)
+    click.echo(f"Mission viewer: {out_path}")
 
 
 @cli.command()

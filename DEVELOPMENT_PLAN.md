@@ -139,22 +139,23 @@
 
 ## 4. План развития (Roadmap)
 
-### Фаза 1 — Фиксация критических багов (1–2 недели)
+### Фаза 1 — Фиксация критических багов ✅
 
-- [ ] anti-correlation fix: `np.abs()` → `np.max(corr)` в lag detection
-- [ ] Dead reckoning fallback при `correlation = None` (ESKF predict + coast)
-- [ ] Валидация начальных координат (check DEM bounds)
-- [ ] `_DEFAULT_BARO` — использовать config, убрать дубль
-- [ ] Fine speed margin вынести в config (proportional to coarse spacing)
+- [x] anti-correlation fix: `np.abs()` → `np.max(corr)` в lag detection (`correlator.py:188`)
+- [x] Dead reckoning fallback при `correlation = None` (ESKF predict + `_dead_reckon_forward()`) (`pipeline.py`)
+- [x] Валидация начальных координат (ValueError если lat/lon вне DEM) (`pipeline.py:initialize()`)
+- [x] `_DEFAULT_BARO` — удалён дубль из `profile.py`, значение из `config`
+- [x] Fine speed margin (15.0) вынесен в config (`fine_speed_margin: float = 15.0` + валидация >0)
 
-### Фаза 2 — Pre-processing система (2–3 недели)
+### Фаза 2 — Pre-processing система ✅ (основной функционал)
 
-- [ ] Модуль pre-flight подготовки:
-  - [ ] Terrain Information Map (std, gradient, CRLB)
-  - [ ] SQLite tile database с spatial index
-  - [ ] CLI команда `gagarin prepare-route --waypoints file.csv`
-- [ ] Интеграция: onboard lookup → adaptive search resolution
+- [x] Модуль pre-flight подготовки (`gagarin/preprocess.py`):
+  - [x] Terrain Information Map (std, gradient, Laplacian, info_map)
+  - [x] SQLite database с R-Tree spatial index + GeoTIFF info_map упаковка
+  - [x] CLI команда `gagarin prepare-route --waypoints file.csv`
+- [x] Интеграция: Mission viewer (`gagarin viz-mission`) — 3-панельный HTML (карта + профиль + fingerprint матрица) с nav-link на dashboard
 - [ ] Multi-resolution DEM pyramid (low-res coarse, high-res fine)
+- [ ] Onboard adaptive search resolution (lookup mission package в полёте)
 
 ### Фаза 3 — Particle Filter (3–4 недели)
 

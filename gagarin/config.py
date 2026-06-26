@@ -1,6 +1,6 @@
 import warnings
 from dataclasses import dataclass, replace
-from typing import Tuple, Any
+from typing import Tuple
 
 
 @dataclass
@@ -12,6 +12,7 @@ class Config:
     coarse_azimuth_step: float = 10.0
     fine_azimuth_step: float = 0.5
     fine_azimuth_margin: float = 6.0
+    fine_speed_margin: float = 15.0
 
     speed_range_ms: Tuple[float, float] = (10.0, 150.0)
     n_speed_hypotheses: int = 10
@@ -48,6 +49,8 @@ class Config:
             raise ValueError("seed must be non-negative")
         if self.n_speed_hypotheses <= 0:
             raise ValueError("n_speed_hypotheses must be positive")
+        if self.fine_speed_margin <= 0:
+            raise ValueError("fine_speed_margin must be positive")
         if self.flight_duration <= 0:
             raise ValueError("flight_duration must be positive")
 
