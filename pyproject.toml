@@ -25,6 +25,9 @@ dependencies = [
     "requests>=2.32",
 ]
 
+[project.scripts]
+gagarin = "main:cli"
+
 [project.optional-dependencies]
 rpi = ["xarray-spatial"]
 dev = ["pytest>=8.0", "pytest-benchmark>=5.0"]
