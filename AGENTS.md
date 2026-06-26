@@ -2,37 +2,45 @@
 
 Технический контекст для будущих агентов / сессий.
 
-## Архитектура (текущая)
+## Архитектура
 
 ```
-                    ┌─────────────┐
-                    │  main.py    │ ← CLI: run, download-dem, generate-dem, analyze
-                    └──────┬──────┘
-                           │ run
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │pipeline  │ │ DataGen  │ │Viz       │
-        │.py       │ │ .py      │ │*.py      │
-        └────┬─────┘ └──────────┘ └──────────┘
-             │
-    ┌────────┼────────┬────────┬──────────┬─────────┐
-    ▼        ▼        ▼        ▼          ▼         ▼
-┌───────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌────────┐ ┌───────┐
-│buffer │ │corre-│ │estim-│ │dem   │ │geo_    │ │quality│
-│.py    │ │lator │ │ator  │ │loader│ │utils   │ │.py    │
-│NMEABuf│ │.py   │ │.py   │ │.py   │ │.py     │ │.py    │
-│fer    │ │TERCOM│ │Veloc-│ │DEMLo │ │offset  │ │_assess│
-│deque  │ │Correl│ │ityEst│ │ader  │ │_coords │ │()     │
-│adapt. │ │ator  │ │imator│ │Coord │ │_batch  │ │       │
-│dist.  │ │Hypoth│ │Navig-│ │Transf│ │        │ │       │
-│       │ │esis  │ │ation │ │DEMIn-│ │        │ │       │
-│       │ │Search│ │Estim │ │terpol│ │        │ │       │
-│       │ │Corre │ │ate   │ │ator  │ │        │ │       │
-│       │ │lation│ │(data-│ │      │ │        │ │       │
-│       │ │Metri │ │class)│ │      │ │        │ │       │
-│       │ │cs    │ │      │ │      │ │        │ │       │
-└───────┘ └──────┘ └──────┘ └──────┘ └────────┘ └───────┘
+                     ┌─────────────┐
+                     │  main.py    │ ← CLI: run, download-dem, generate-dem, analyze
+                     └──────┬──────┘
+                            │ run
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+        ┌──────────┐  ┌──────────┐  ┌──────────┐
+        │pipeline  │  │ DataGen  │  │Viz       │
+        │.py       │  │ .py      │  │*.py      │
+        └────┬─────┘  └──────────┘  └────┬─────┘
+             │                            │
+    ┌───────┼──────┬──────┬──────┬───┐    ├──────┬──────┬──────┬──────┬────────┐
+    ▼       ▼      ▼      ▼      ▼   ▼    ▼      ▼      ▼      ▼      ▼        ▼
+┌──────┐ ┌────┐ ┌────┐ ┌────┐ ┌──┐ ┌──┐ ┌────┐ ┌──────┐ ┌────┐ ┌────┐ ┌────────┐
+│buffer│ │cor-│ │est-│ │dem │ │geo│ │qu│ │temp│ │utils │ │dash│ │tra-│ │correla-│
+│.py   │ │rel-│ │ima-│ │loa-│ │_u│ │al│ │late│ │.py   │ │boa-│ │jec-│ │tion.   │
+│NMEABu│ │ator│ │tor │ │der │ │t-│ │it│ │.py  │ │save_ │ │rd  │ │tory│ │py      │
+│ffer  │ │.py │ │.py │ │.py │ │il│ │y.│ │HTML_│ │html()│ │.py │ │.py │ │correla-│
+│deque  │ │TER-│ │Velo│ │DEM │ │s.│ │py│ │TEMP │ │save_ │ │nav- │ │tra- │ │tion_he│
+│adapt. │ │COM │ │cit │ │Lo- │ │py│ │  │ │LATE │ │dashb │ │iga- │ │jec- │ │atmap() │
+│dist.  │ │Cor-│ │yEs│ │ader│ │of│ │  │ │     │ │oard()│ │tion_│ │tory_│ │        │
+│       │ │r-  │ │tim-│ │Co- │ │fs│ │  │ │     │ │get_g │ │das- │ │map( │ │        │
+│       │ │ela-│ │ator│ │ord │ │et│ │  │ │     │ │rid_o │ │hboa │ │)    │ │        │
+│       │ │tor │ │Nav-│ │Tra-│ │_c│ │  │ │     │ │r_fal │ │rd() │ │     │ │        │
+│       │ │Hyp-│ │iga-│ │nsf │ │oo│ │  │ │     │ │lback │ │     │ │     │ │        │
+│       │ │oth-│ │tion│ │DEM-│ │rd│ │  │ │     │ │()    │ │     │ │     │ │        │
+│       │ │esis│ │Est-│ │Int-│ │s_│ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │Sea-│ │ima-│ │erp-│ │ba│ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │rch │ │te  │ │ola-│ │tc│ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │Cor-│ │(da-│ │tor │ │h)│ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │rel-│ │tac-│ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │atio│ │las│ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │n Me│ │s) │ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │tric│ │   │ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
+│       │ │s   │ │   │ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
+└───────┘ └────┘ └───┘ └────┘ └──┘ └──┘ └─────┘ └──────┘ └────┘ └────┘ └────────┘
                             ┌───────┐ ┌────────┐ ┌──────────┐
                             │eskf  │ │config  │ │nmea_    │
                             │.py   │ │.py     │ │parser   │
@@ -57,11 +65,14 @@
 | **quality** | `quality.py` | `_assess()` (private) | Классификация good/marginal/poor + confidence. |
 | **eskf** | `eskf.py` | `ErrorStateKalmanFilter` | 6D-фильтр. solve vs inv. Degree bug fixed. |
 | **pipeline** | `pipeline.py` | `NavigationPipeline` | Оркестратор: буфер→корреляция→оценка→dead reckoning→ESKF. |
-| **viz/utils** | `viz/utils.py` | `TEMPLATE`, `BEST_MARKER`, `TRUE_LINE`, `EST_LINE`, `save_html()`, `get_grid_or_fallback()` | Общие константы и утилиты визуализации. |
-| **viz/dashboard** | `viz/dashboard.py` | `navigation_dashboard()`, `comparison_dashboard()` | Plotly HTML-дашборды. Русские подписи. |
-| **viz/trajectory** | `viz/trajectory.py` | `trajectory_map()` | 2D карта истинного vs оценённого трека. |
-| **viz/correlation** | `viz/correlation.py` | `correlation_heatmap()` | Тепловая карта coarse search. |
-| **viz/profile** | `viz/profile.py` | `profile_comparison()` | Сравнение измеренного vs эталонного профиля. |
+| **viz/template** | `viz/template.py` | `HTML_TEMPLATE` | HTML-шаблон с тёмной темой (GitHub Dark), 5 карточек, табы Synthetic/Dramatic, адаптивная вёрстка. |
+| **viz/utils** | `viz/utils.py` | `TEMPLATE`, `save_html()` (одиночный Figure), `save_dashboard()` (список chart-ов), `get_grid_or_fallback()`, константы стилей | Общие утилиты и функции сохранения HTML. |
+| **viz/dashboard** | `viz/dashboard.py` | `navigation_dashboard(data)` → `go.Figure`, `unified_dashboard(syn, dram)` → `list[dict]` | Генерация дашбордов. `navigation_dashboard` — для одного DEM (старый формат). `unified_dashboard` — для сравнения DEM: возвращает список из 5 chart-словарей (terrain, profile, timeline, error, heatmap). |
+| **viz/components** | `viz/components.py` | `terrain_traces()`, `profile_traces()`, `timeline_traces()`, `error_traces()`, `correlation_heatmap_trace()`, `drift_traces()`, `quality_pie()` | Фабрики Plotly trace-ов для каждого типа графика. Используются обоими дашбордами. |
+| **viz/data_model** | `viz/data_model.py` | `DashboardData`, `TerrainData`, `TrajectoryData`, `EstimateData`, `CorrData`, `ProfileData`, `ErrorData`, `build_dashboard_data()` | Dataclass-ы для передачи данных в визуализацию. |
+| **viz/trajectory** | `viz/trajectory.py` | `trajectory_map()` | 2D карта истинного vs оценённого трека (одиночный Figure). |
+| **viz/correlation** | `viz/correlation.py` | `correlation_heatmap()` | Тепловая карта coarse search (одиночный Figure). |
+| **viz/profile** | `viz/profile.py` | `profile_comparison()` | Сравнение измеренного vs эталонного профиля (одиночный Figure). |
 | **data_generator** | `data_generator.py` | `DataGenerator` | Симулирует полёт: NMEA строки с шумом. |
 | **main** | `main.py` | CLI (click) | Точка входа: `run`, `download-dem`, `generate-dem`, `analyze`. |
 
@@ -71,7 +82,10 @@
 - **Coarse-to-fine**: 10° coarse → 0.5° fine вокруг top-5. Margin = 6°.
 - **DEM тюнинг**: synthetic σ=95м → dramatic σ=687м для наглядных демок.
 - **Degree bug фикс**: ESKF `update_position` больше не делает `np.degrees()` на уже градусах.
-- **save_html()** в `viz/utils.py`, реэкспорт через `viz/__init__.py`.
+- **5 отдельных go.Figure вместо make_subplots** в `unified_dashboard()`. Каждый график — самостоятельный Figure с трейсами обоих DEM. Это позволяет рендерить их в отдельных HTML-карточках.
+- **save_html()** для одиночных Figure (старый формат). **save_dashboard()** для списка chart-ов: использует HTML_TEMPLATE из `template.py`, сериализует каждый Figure в JSON, добавляет массивы видимости для табов.
+- **HTML-шаблон** (`template.py`): GitHub Dark тема, 5 карточек, каждая с заголовком, Plotly-графиком и подписью. Табы Synthetic/Dramatic переключают видимость трейсов через `Plotly.restyle()`. Описания вкладок (что за DEM, зачем нужен) показываются под табами.
+- **Подписи к графикам** с примерами соотношений: каждая подпись содержит ✅⚠️❌ блок с конкретными числами (корреляция >0.95 → надёжно, ошибка азимута >30° → сбой и т.д.), чтобы пользователь понимал, хорошо это или плохо.
 
 ## DEMs в `data/dem/`
 

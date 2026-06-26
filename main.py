@@ -18,6 +18,7 @@ from gagarin.viz import (
     navigation_dashboard,
     unified_dashboard,
     save_html,
+    save_dashboard,
     build_dashboard_data,
 )
 from gagarin.config import Config
@@ -183,10 +184,10 @@ def run(config_path: str, compare: bool):
             dem_name="Dramatic",
         )
 
-        fig = unified_dashboard(dash_syn, dash_dram)
+        charts = unified_dashboard(dash_syn, dash_dram)
 
         dash_path = os.path.join(cfg.output_path, "dashboard.html")
-        save_html(fig, dash_path)
+        save_dashboard(charts, dash_path)
         click.echo(f"Unified dashboard: {dash_path}")
 
 
