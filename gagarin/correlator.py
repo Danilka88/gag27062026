@@ -84,29 +84,37 @@ class TERCOMCorrelator:
             observed_profile=observed_profile,
         )
 
+    def _search_grid(
+        self,
+        profile: np.ndarray,
+        center_lat: float,
+        center_lon: float,
+        azimuths: np.ndarray,
+        speeds: np.ndarray,
+        min_std: float = None,
+    ) -> List[Hypothesis]:
+        n = len(profile)
+        hypotheses = []
+        for az in azimuths:
+            for sp in speeds:
+                ref = self._build_reference_profile(center_lat, center_lon, az, sp, n)
+                if min_std is not None and np.std(ref) < min_std:
+                    continue
+                corr = self._ncc(profile, ref)
+                hypotheses.append(Hypothesis(az, sp, corr, 0))
+        return hypotheses
+
     def _coarse_search(
         self,
         profile: np.ndarray,
         center_lat: float,
         center_lon: float,
     ) -> List[Hypothesis]:
-        n = len(profile)
-        azimuths = np.arange(0, 360, self.config.coarse_azimuth_step)
-        speeds = np.linspace(
-            self.config.speed_range_ms[0],
-            self.config.speed_range_ms[1],
-            self.config.n_speed_hypotheses,
-        )
-
-        hypotheses = []
-        for az in azimuths:
-            for sp in speeds:
-                ref = self._build_reference_profile(center_lat, center_lon, az, sp, n)
-                if np.std(ref) < self.config.terrain_std_threshold * 0.5:
-                    continue
-                corr = self._ncc(profile, ref)
-                hypotheses.append(Hypothesis(az, sp, corr, 0))
-
+        cfg = self.config
+        if not hasattr(self, "_cached_coarse_azimuths") or len(self._cached_coarse_azimuths) != int(360 / cfg.coarse_azimuth_step):
+            self._cached_coarse_azimuths = np.arange(0, 360, cfg.coarse_azimuth_step)
+        speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], cfg.n_speed_hypotheses)
+        hypotheses = self._search_grid(profile, center_lat, center_lon, self._cached_coarse_azimuths, speeds, cfg.terrain_std_threshold * 0.5)
         hypotheses.sort(key=lambda h: h.correlation, reverse=True)
         return hypotheses[:10]
 
@@ -117,30 +125,21 @@ class TERCOMCorrelator:
         center_lon: float,
         top_hypotheses: List[Hypothesis],
     ) -> List[Hypothesis]:
-        n = len(profile)
+        cfg = self.config
         fine_hypotheses = []
-
         for hyp in top_hypotheses:
-            az_center = hyp.azimuth_deg
-            sp_center = hyp.speed_ms
-
             fine_azs = np.arange(
-                max(0, az_center - self.config.fine_azimuth_margin),
-                min(360, az_center + self.config.fine_azimuth_margin + 1e-9),
-                self.config.fine_azimuth_step,
+                max(0, hyp.azimuth_deg - cfg.fine_azimuth_margin),
+                min(360, hyp.azimuth_deg + cfg.fine_azimuth_margin + 1e-9),
+                cfg.fine_azimuth_step,
             )
-            n_speeds = max(5, self.config.n_speed_hypotheses // 3)
+            n_speeds = max(5, cfg.n_speed_hypotheses // 3)
             fine_speeds = np.linspace(
-                max(self.config.speed_range_ms[0], sp_center - 15),
-                min(self.config.speed_range_ms[1], sp_center + 15),
+                max(cfg.speed_range_ms[0], hyp.speed_ms - 15),
+                min(cfg.speed_range_ms[1], hyp.speed_ms + 15),
                 n_speeds,
             )
-
-            for az in fine_azs:
-                for sp in fine_speeds:
-                    ref = self._build_reference_profile(center_lat, center_lon, az, sp, n)
-                    corr = self._ncc(profile, ref)
-                    fine_hypotheses.append(Hypothesis(az, sp, corr, 0))
+            fine_hypotheses.extend(self._search_grid(profile, center_lat, center_lon, fine_azs, fine_speeds))
 
         fine_hypotheses.sort(key=lambda h: h.correlation, reverse=True)
         return fine_hypotheses[:10]

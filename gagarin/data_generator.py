@@ -5,7 +5,7 @@ import math
 
 from gagarin.dem_loader import DEMLoader
 from gagarin.config import Config
-from gagarin.geo_utils import offset_coords
+from gagarin.geo_utils import offset_coords_batch
 
 
 @dataclass
@@ -32,16 +32,10 @@ class DataGenerator:
     ) -> np.ndarray:
         n = int(params.duration_s * self.config.nmea_freq_hz)
         dt = 1.0 / self.config.nmea_freq_hz
-        d_step = params.speed_ms * dt
-
-        lats = np.zeros(n)
-        lons = np.zeros(n)
-        for i in range(n):
-            dist = i * d_step
-            lats[i], lons[i] = offset_coords(
-                params.start_lat, params.start_lon,
-                dist, params.azimuth_rad
-            )
+        distances = np.arange(n) * params.speed_ms * dt
+        start_lats = np.full(n, params.start_lat)
+        start_lons = np.full(n, params.start_lon)
+        lats, lons = offset_coords_batch(start_lats, start_lons, distances, params.azimuth_rad, params.start_lat)
 
         true_terrain = self.dem.elevation_batch(lats, lons)
         noise = self.rng.normal(0, noise_std, size=n)

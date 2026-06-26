@@ -114,13 +114,9 @@ class DEMLoader:
 
     def get_geographic_grid(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         xs, ys, data = self.get_elevation_grid()
-        lons = np.empty_like(xs)
-        lats = np.empty_like(ys)
-        for i, x in enumerate(xs):
-            _, lons[i] = self._transformer_xy_to_lonlat.transform(x, ys[0])
-        for j, y in enumerate(ys):
-            lats[j], _ = self._transformer_xy_to_lonlat.transform(xs[0], y)
-        return lons, lats, data
+        _, lons = self._transformer_xy_to_lonlat.transform(xs.tolist(), [ys[0]] * len(xs))
+        lats, _ = self._transformer_xy_to_lonlat.transform([xs[0]] * len(ys), ys.tolist())
+        return np.array(lons), np.array(lats), data
 
     def normalize_coordinates(self, lats: np.ndarray, lons: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         bounds = self.bounds

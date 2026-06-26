@@ -185,13 +185,10 @@ def _load_config(path: str) -> Config:
 def _generate_trajectory(params: FlightParams, cfg: Config) -> Tuple[np.ndarray, np.ndarray]:
     dt = 1.0 / cfg.nmea_freq_hz
     n = int(params.duration_s * cfg.nmea_freq_hz)
-    lats, lons = np.empty(n), np.empty(n)
-    for i in range(n):
-        dist = i * params.speed_ms * dt
-        lats[i], lons[i] = offset_coords(
-            params.start_lat, params.start_lon, dist, params.azimuth_rad
-        )
-    return lats, lons
+    distances = np.arange(n) * params.speed_ms * dt
+    start_lats = np.full(n, params.start_lat)
+    start_lons = np.full(n, params.start_lon)
+    return offset_coords_batch(start_lats, start_lons, distances, params.azimuth_rad, params.start_lat)
 
 
 def _build_correlation_matrix(
