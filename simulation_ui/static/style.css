@@ -1,0 +1,465 @@
+body {
+    background: #212529;
+    color: #dee2e6;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* Landing screen */
+#landing-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.landing-card {
+    max-width: 640px;
+    width: 100%;
+    background: #2b3035;
+    border: 1px solid #495057;
+    border-radius: 12px;
+    padding: 3rem;
+}
+
+.landing-card h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+.landing-card .subtitle {
+    color: #adb5bd;
+    text-align: center;
+    margin-bottom: 2rem;
+    font-size: 1rem;
+}
+
+.landing-card .form-label {
+    color: #adb5bd;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.landing-card .description-box {
+    background: #212529;
+    border: 1px solid #495057;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+    min-height: 80px;
+    font-size: 0.9rem;
+    color: #adb5bd;
+}
+
+/* Simulation screen */
+#sim-screen {
+    display: none;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* Top bar */
+.top-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1.5rem;
+    background: #2b3035;
+    border-bottom: 1px solid #495057;
+    flex-shrink: 0;
+}
+
+.progress-wrapper {
+    flex: 1;
+    height: 8px;
+    background: #495057;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #6ea8fe;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+    width: 0%;
+}
+
+.step-counter {
+    color: #adb5bd;
+    font-size: 0.85rem;
+    font-family: monospace;
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+.status-badge {
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge.loading { background: #ffda6a33; color: #ffda6a; }
+.status-badge.running { background: #6ea8fe33; color: #6ea8fe; }
+.status-badge.done { background: #75b79833; color: #75b798; }
+
+/* Layout */
+.sim-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Step list sidebar */
+.step-list {
+    width: 220px;
+    flex-shrink: 0;
+    background: #2b3035;
+    border-right: 1px solid #495057;
+    overflow-y: auto;
+    padding: 1rem 0;
+}
+
+.phase-group {
+    margin-bottom: 0.5rem;
+}
+
+.phase-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6c757d;
+    padding: 0.5rem 1rem 0.25rem;
+}
+
+.step-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: #adb5bd;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+}
+
+.step-entry:hover {
+    background: #343a40;
+    color: #dee2e6;
+}
+
+.step-entry.active {
+    border-left-color: #6ea8fe;
+    background: #343a40;
+    color: #6ea8fe;
+}
+
+.step-entry.done {
+    color: #75b798;
+    border-left-color: #75b798;
+}
+
+.step-entry .step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    background: #495057;
+    color: #adb5bd;
+}
+
+.step-entry.done .step-num {
+    background: #75b79833;
+    color: #75b798;
+}
+
+.step-entry.active .step-num {
+    background: #6ea8fe33;
+    color: #6ea8fe;
+}
+
+.step-entry.pending .step-num {
+    background: #2b3035;
+    color: #495057;
+    border: 1px solid #495057;
+}
+
+/* Content area */
+.step-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+}
+
+.step-header {
+    margin-bottom: 1.5rem;
+}
+
+.step-header h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+.step-header .step-subtitle {
+    color: #adb5bd;
+    font-size: 0.9rem;
+}
+
+.step-phase-badge {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #343a40;
+    border: 1px solid #495057;
+    color: #adb5bd;
+    margin-bottom: 0.5rem;
+}
+
+.step-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.step-tags .tag {
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    background: #343a40;
+    border: 1px solid #495057;
+    color: #6ea8fe;
+}
+
+.step-tags .tag-purple {
+    border-color: #6f42c1;
+    color: #b580d1;
+}
+
+.svg-container {
+    background: #212529;
+    border: 1px solid #495057;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.svg-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.step-task {
+    border-left: 4px solid #6ea8fe;
+    background: #2b3035;
+    padding: 1rem;
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.step-task .label {
+    font-weight: 700;
+    color: #6ea8fe;
+    margin-bottom: 0.5rem;
+}
+
+.step-explanation {
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: #ced4da;
+    margin-bottom: 1.5rem;
+}
+
+/* Why grid */
+.why-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+@media(max-width: 768px) {
+    .why-grid { grid-template-columns: 1fr; }
+}
+
+.why-card {
+    background: #2b3035;
+    border: 1px solid #495057;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.why-card .why-icon {
+    font-size: 1.2rem;
+    margin-bottom: 0.3rem;
+}
+
+.why-card .why-title {
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 0.3rem;
+}
+
+.why-card .why-text {
+    font-size: 0.8rem;
+    color: #adb5bd;
+    line-height: 1.4;
+}
+
+/* Metrics table */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.metric-card {
+    background: #2b3035;
+    border: 1px solid #495057;
+    border-radius: 6px;
+    padding: 0.6rem;
+    text-align: center;
+}
+
+.metric-card .metric-value {
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: monospace;
+    color: #6ea8fe;
+}
+
+.metric-card .metric-label {
+    font-size: 0.7rem;
+    color: #adb5bd;
+    margin-top: 0.1rem;
+}
+
+/* Controls bar */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.5rem;
+    background: #2b3035;
+    border-top: 1px solid #495057;
+    flex-shrink: 0;
+}
+
+.controls .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #495057;
+    border-radius: 8px;
+    background: #212529;
+    color: #dee2e6;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 0.9rem;
+}
+
+.controls .btn-icon:hover {
+    background: #343a40;
+    border-color: #6ea8fe;
+}
+
+.controls .btn-icon:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.controls .btn-icon.playing {
+    background: #ea868f33;
+    border-color: #ea868f;
+    color: #ea868f;
+}
+
+.controls .speed-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+}
+
+.controls .speed-group .speed-label {
+    font-size: 0.75rem;
+    color: #adb5bd;
+    margin-right: 0.25rem;
+}
+
+.controls .speed-btn {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid #495057;
+    border-radius: 4px;
+    background: #212529;
+    color: #adb5bd;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: monospace;
+}
+
+.controls .speed-btn:hover {
+    background: #343a40;
+}
+
+.controls .speed-btn.active {
+    background: #6ea8fe33;
+    border-color: #6ea8fe;
+    color: #6ea8fe;
+}
+
+.controls .return-btn {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #495057;
+    border-radius: 6px;
+    background: #212529;
+    color: #adb5bd;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.controls .return-btn:hover {
+    background: #343a40;
+    color: #dee2e6;
+}
+
+/* Loading spinner */
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #495057;
+    border-top-color: #6ea8fe;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Phase indicator colors */
+.phase-pre-flight .step-phase-badge { color: #6ea8fe; border-color: #6ea8fe33; }
+.phase-data .step-phase-badge { color: #75b798; border-color: #75b79833; }
+.phase-correlation .step-phase-badge { color: #ffda6a; border-color: #ffda6a33; }
+.phase-filter .step-phase-badge { color: #b580d1; border-color: #b580d133; }
+.phase-result .step-phase-badge { color: #ea868f; border-color: #ea868f33; }
