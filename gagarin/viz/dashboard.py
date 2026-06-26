@@ -162,36 +162,72 @@ def navigation_dashboard(data: DashboardData) -> go.Figure:
     return fig
 
 
-def comparison_dashboard(data_syn: DashboardData, data_dram: DashboardData) -> go.Figure:
+def unified_dashboard(syn: DashboardData, dram: DashboardData) -> go.Figure:
     fig = make_subplots(
-        rows=3,
-        cols=2,
+        rows=3, cols=2,
         specs=[
             [{"type": "scene"}, {"type": "scene"}],
             [{"type": "xy"}, {"type": "xy"}],
             [{"type": "xy"}, {"type": "xy"}],
         ],
         subplot_titles=(
-            f"Synthetic — {data_syn.dem_name}",
-            f"Dramatic — {data_dram.dem_name}",
-            "Профили рельефа — Synthetic",
-            "Профили рельефа — Dramatic",
-            "Ошибки: Synthetic vs Dramatic",
-            "Корреляция по времени: Synthetic vs Dramatic",
+            "Synthetic — Рельеф и траектория<br>"
+            "<sup style='font-size:10px;color:gray'>"
+            "Красный — истинный трек; Зелёный — TERCOM; Жёлтый — ESKF</sup>",
+            "Dramatic — Рельеф и траектория<br>"
+            "<sup style='font-size:10px;color:gray'>"
+            "Красный — истинный трек; Зелёный — TERCOM; Жёлтый — ESKF</sup>",
+            "Профиль рельефа<br>"
+            "<sup style='font-size:10px;color:gray'>"
+            "Голубой — измеренный радаром; Оранжевый — эталон из DEM</sup>",
+            "Корреляция и доверие<br>"
+            "<sup style='font-size:10px;color:gray'>"
+            "Зелёный — корреляция (NCC); Оранжевый — доверие</sup>",
+            "Ошибки азимута и скорости<br>"
+            "<sup style='font-size:10px;color:gray'>"
+            "Розовый — азимут (°); Голубой — скорость (м/с)</sup>",
+            "Карта корреляции<br>"
+            "<sup style='font-size:10px;color:gray'>"
+            "NCC для азимут×скорость; ☆ — лучшее совпадение</sup>",
         ),
-        vertical_spacing=0.12,
+        vertical_spacing=0.13,
         horizontal_spacing=0.08,
     )
 
-    for trace in terrain_traces(data_syn.terrain, data_syn.trajectory, data_syn.estimates):
-        fig.add_trace(trace, row=1, col=1)
-    for trace in terrain_traces(data_dram.terrain, data_dram.trajectory, data_dram.estimates):
-        fig.add_trace(trace, row=1, col=2)
+    idx_groups = {k: [] for k in (
+        'syn_terrain', 'dram_terrain',
+        'syn_profile', 'dram_profile',
+        'syn_timeline', 'dram_timeline',
+        'syn_error', 'dram_error',
+        'syn_heatmap', 'dram_heatmap',
+    )}
 
-    for trace in profile_traces(data_syn.profile):
-        fig.add_trace(trace, row=2, col=1)
-    for trace in profile_traces(data_dram.profile):
-        fig.add_trace(trace, row=2, col=2)
+    def _add(prefix: str, traces: list, group: str, **kwargs):
+        for t in traces:
+            if t.name and prefix not in t.name:
+                t.name = f"{prefix} {t.name}"
+            fig.add_trace(t, **kwargs)
+            idx_groups[group].append(len(fig.data) - 1)
+
+    _add("Synthetic", terrain_traces(syn.terrain, syn.trajectory, syn.estimates), 'syn_terrain', row=1, col=1)
+    _add("Dramatic", terrain_traces(dram.terrain, dram.trajectory, dram.estimates), 'dram_terrain', row=1, col=2)
+
+    _add("Synthetic", profile_traces(syn.profile), 'syn_profile', row=2, col=1)
+    _add("Dramatic", profile_traces(dram.profile), 'dram_profile', row=2, col=1)
+
+    _add("Synthetic", timeline_traces(syn.estimates), 'syn_timeline', row=2, col=2)
+    _add("Dramatic", timeline_traces(dram.estimates), 'dram_timeline', row=2, col=2)
+
+    _add("Synthetic", error_traces(syn.errors), 'syn_error', row=3, col=1)
+    _add("Dramatic", error_traces(dram.errors), 'dram_error', row=3, col=1)
+
+    corr_best_az_syn = syn.correlation.best_azimuth()
+    corr_best_sp_syn = syn.correlation.best_speed()
+    _add("Synthetic", correlation_heatmap_trace(syn.correlation, corr_best_az_syn, corr_best_sp_syn), 'syn_heatmap', row=3, col=2)
+
+    corr_best_az_dram = dram.correlation.best_azimuth()
+    corr_best_sp_dram = dram.correlation.best_speed()
+    _add("Dramatic", correlation_heatmap_trace(dram.correlation, corr_best_az_dram, corr_best_sp_dram), 'dram_heatmap', row=3, col=2)
 
     for scene_row, scene_col in [(1, 1), (1, 2)]:
         fig.update_scenes(
@@ -206,70 +242,81 @@ def comparison_dashboard(data_syn: DashboardData, data_dram: DashboardData) -> g
 
     fig.update_xaxes(title_text="Отсчёт", row=2, col=1)
     fig.update_yaxes(title_text="Высота (м)", row=2, col=1)
-    fig.update_xaxes(title_text="Отсчёт", row=2, col=2)
-    fig.update_yaxes(title_text="Высота (м)", row=2, col=2)
-
-    def _add_corr_overlay(estimates, name, color, row, col):
-        if not estimates:
-            return
-        idx = [e.idx for e in estimates]
-        fig.add_trace(
-            go.Scatter(
-                x=idx, y=[e.correlation for e in estimates],
-                mode="lines", name=f"{name} корреляция",
-                line=dict(color=color, width=2),
-            ),
-            row=row, col=col,
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=idx, y=[e.confidence for e in estimates],
-                mode="lines", name=f"{name} доверие",
-                line=dict(color=color, width=1, dash="dot"),
-            ),
-            row=row, col=col,
-        )
-    _add_corr_overlay(data_syn.estimates, "Synthetic", "cyan", 3, 2)
-    _add_corr_overlay(data_dram.estimates, "Dramatic", "red", 3, 2)
-
-    fig.update_xaxes(title_text="Номер оценки", row=3, col=2)
-    fig.update_yaxes(title_text="Значение", row=3, col=2)
-
-    def _add_error_overlay(data: DashboardData, name: str, color: str, row: int, col: int):
-        if len(data.errors.azimuth_errors) == 0:
-            return
-        idx = list(range(len(data.errors.azimuth_errors)))
-        fig.add_trace(
-            go.Scatter(
-                x=idx, y=data.errors.azimuth_errors,
-                mode="lines", name=f"{name} ошибка азимута",
-                line=dict(color=color, width=2),
-            ),
-            row=row, col=col,
-        )
-    _add_error_overlay(data_syn, "Synthetic", "cyan", 3, 1)
-    _add_error_overlay(data_dram, "Dramatic", "red", 3, 1)
-
+    fig.update_xaxes(title_text="Номер оценки", row=2, col=2)
+    fig.update_yaxes(title_text="Значение", row=2, col=2)
     fig.update_xaxes(title_text="Номер оценки", row=3, col=1)
     fig.update_yaxes(title_text="Ошибка азимута (°)", row=3, col=1)
+    fig.update_yaxes(
+        title_text="Ошибка скорости (м/с)",
+        overlaying="y",
+        side="right",
+        row=3, col=1,
+    )
+    fig.update_xaxes(title_text="Азимут (°)", row=3, col=2)
+    fig.update_yaxes(title_text="Скорость (м/с)", row=3, col=2)
 
-    metrics_lines = []
-    for name, data, color in [("Synthetic", data_syn, "cyan"), ("Dramatic", data_dram, "red")]:
-        mae_az = data.errors.mean_azimuth_error
-        mae_sp = data.errors.mean_speed_error
-        drift = data.errors.final_drift_km
-        metrics_lines.append(
-            f"<span style='color:{color}'><b>{name}</b></span> | "
-            f"σ={data.terrain.elevation_std:.0f} м | "
-            f"|az|={mae_az:.1f}° | |sp|={mae_sp:.1f} м/с | "
-            f"дрейф={drift:.2f} км | оценок={len(data.estimates)}"
+    n = len(fig.data)
+
+    def _vis(*groups):
+        v = [False] * n
+        for g in groups:
+            for i in idx_groups[g]:
+                v[i] = True
+        return v
+
+    syn_vis = _vis('syn_terrain', 'syn_profile', 'syn_timeline', 'syn_error', 'syn_heatmap')
+    dram_vis = _vis('dram_terrain', 'dram_profile', 'dram_timeline', 'dram_error', 'dram_heatmap')
+    cmp_vis = _vis(
+        'syn_terrain', 'dram_terrain',
+        'syn_profile', 'dram_profile',
+        'syn_timeline', 'dram_timeline',
+        'syn_error', 'dram_error',
+        'syn_heatmap',
+    )
+
+    updatemenus = [
+        dict(
+            type="buttons",
+            direction="right",
+            x=0.5, y=1.08, xanchor="center",
+            buttons=[
+                dict(label="Synthetic", method="update",
+                     args=[{"visible": syn_vis},
+                           {"title": "TERCOM Навигация — Synthetic DEM"}]),
+                dict(label="Dramatic", method="update",
+                     args=[{"visible": dram_vis},
+                           {"title": "TERCOM Навигация — Dramatic DEM"}]),
+                dict(label="Сравнение", method="update",
+                     args=[{"visible": cmp_vis},
+                           {"title": "TERCOM Навигация — Synthetic vs Dramatic"}]),
+            ],
+        ),
+    ]
+
+    def _summary_line(name: str, d: DashboardData) -> str:
+        tr = d.terrain
+        total = len(d.estimates)
+        good = sum(1 for e in d.estimates if e.quality == "good")
+        q_str = f"good={good} ({100*good/total:.0f}%)" if total else "—"
+        return (
+            f"<b>{name}</b> | "
+            f"Рельеф: {tr.elevation_range[0]:.0f}–{tr.elevation_range[1]:.0f} м "
+            f"(σ={tr.elevation_std:.0f} м) | "
+            f"Оценок: {total} | "
+            f"|az|: {d.errors.mean_azimuth_error:.1f}° | "
+            f"|sp|: {d.errors.mean_speed_error:.1f} м/с | "
+            f"Дрейф: {d.errors.final_drift_km:.2f} км | "
+            f"{q_str}"
         )
 
     fig.add_annotation(
         x=0.5, y=1.0, xref="paper", yref="paper",
-        text="<br>".join(metrics_lines),
+        text="<br>".join([
+            _summary_line("Synthetic", syn),
+            _summary_line("Dramatic", dram),
+        ]),
         showarrow=False,
-        font=dict(size=12),
+        font=dict(size=10),
         align="center",
         bgcolor="rgba(0,0,0,0.7)",
         bordercolor="gray",
@@ -277,22 +324,13 @@ def comparison_dashboard(data_syn: DashboardData, data_dram: DashboardData) -> g
         yshift=10,
     )
 
-    fig.add_annotation(
-        x=0.5, y=0.38, xref="paper", yref="paper",
-        text="Synthetic — ровный рельеф → низкая корреляция, большой дрейф.<br>"
-             "Dramatic — горный рельеф → выше корреляция, меньше ошибка.",
-        showarrow=False,
-        font=dict(size=11),
-        align="center",
-        bgcolor="rgba(0,0,0,0.5)",
-    )
-
     fig.update_layout(
-        title="TERCOM: сравнение Synthetic (ровный) vs Dramatic (горный) DEM",
-        height=1200,
+        title="TERCOM Навигация — Synthetic vs Dramatic",
+        height=1100,
         template=TEMPLATE,
         showlegend=True,
         legend=dict(x=1.02, y=1, xanchor="left"),
+        updatemenus=updatemenus,
     )
 
     return fig

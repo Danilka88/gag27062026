@@ -16,7 +16,7 @@ from gagarin.viz import (
     trajectory_map,
     profile_comparison,
     navigation_dashboard,
-    comparison_dashboard,
+    unified_dashboard,
     save_html,
     build_dashboard_data,
 )
@@ -151,7 +151,7 @@ def run(config_path: str, compare: bool):
 
     if compare and "synthetic" in all_data and "dramatic" in all_data:
         click.echo("\n" + "=" * 60)
-        click.echo("Generating comparison dashboard...")
+        click.echo("Generating unified dashboard (Synthetic / Dramatic / Сравнение)...")
         click.echo("=" * 60)
 
         syn = all_data["synthetic"]
@@ -183,11 +183,11 @@ def run(config_path: str, compare: bool):
             dem_name="Dramatic",
         )
 
-        fig_cmp = comparison_dashboard(dash_syn, dash_dram)
+        fig = unified_dashboard(dash_syn, dash_dram)
 
-        cmp_path = os.path.join(cfg.output_path, "comparison_dashboard.html")
-        save_html(fig_cmp, cmp_path)
-        click.echo(f"Comparison dashboard: {cmp_path}")
+        dash_path = os.path.join(cfg.output_path, "dashboard.html")
+        save_html(fig, dash_path)
+        click.echo(f"Unified dashboard: {dash_path}")
 
 
 @cli.command()
