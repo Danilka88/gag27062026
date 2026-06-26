@@ -16,6 +16,7 @@ from gagarin.viz import (
     trajectory_map,
     profile_comparison,
     navigation_dashboard,
+    comparison_dashboard,
     save_html,
 )
 from gagarin.config import Config
@@ -69,6 +70,7 @@ def run(config_path: str, compare: bool):
         if found:
             dem_paths.append(("discovered", found))
 
+    all_data = {}
     for name, dem_path in dem_paths:
         if not dem_path:
             click.echo(f"No DEM found for {name}.", err=True)
@@ -128,9 +130,62 @@ def run(config_path: str, compare: bool):
             click.echo(f"  Correlation: {first.correlation:.4f}")
             click.echo(f"  Confidence: {first.confidence:.3f}")
 
-        out_dir = os.path.join(cfg.output_path, name)
+        out_dir = os.path.join(cfg.output_path, name) if compare else cfg.output_path
+        json_path = os.path.join(out_dir, "estimates.json")
+        with open(json_path, "w") as f:
+            json.dump(
+                [{k: float(v) if isinstance(v, (np.floating,)) else v
+                  for k, v in r.__dict__.items()
+                  if v is None or isinstance(v, (int, float, str, bool, list, dict))}
+                 for r in results],
+                f, indent=2, default=str,
+            )
+        click.echo(f"Estimates: {json_path} ({len(results)} estimates)")
         _generate_visualizations(dem, results, params, cfg, gen, pipeline, out_dir)
-        click.echo(f"\nVisualizations saved to {out_dir}/")
+        click.echo(f"Visualizations saved to {out_dir}/")
+
+        all_data[name] = dict(
+            dem=dem, results=results, params=params, pipeline=pipeline,
+        )
+
+    if compare and "synthetic" in all_data and "dramatic" in all_data:
+        click.echo("\n" + "=" * 60)
+        click.echo("Generating comparison dashboard...")
+        click.echo("=" * 60)
+
+        cfg_cmp = Config.default()
+        n_az = int(360 / cfg_cmp.coarse_azimuth_step)
+        n_sp = cfg_cmp.n_speed_hypotheses
+        azimuths = np.arange(0, 360, cfg_cmp.coarse_azimuth_step)
+        speeds = np.linspace(cfg_cmp.speed_range_ms[0], cfg_cmp.speed_range_ms[1], n_sp)
+
+        syn = all_data["synthetic"]
+        dram = all_data["dramatic"]
+        syn_pipeline = syn["pipeline"]
+        dram_pipeline = dram["pipeline"]
+
+        obs_syn = syn_pipeline.last_result.observed_profile if syn_pipeline.last_result else np.array([])
+        ref_syn = syn_pipeline.last_result.reference_profile if syn_pipeline.last_result else np.array([])
+        obs_dram = dram_pipeline.last_result.observed_profile if dram_pipeline.last_result else np.array([])
+        ref_dram = dram_pipeline.last_result.reference_profile if dram_pipeline.last_result else np.array([])
+
+        traj_lats, traj_lons = _generate_trajectory(syn["params"], cfg_cmp)
+
+        corr_syn, _, _ = _build_correlation_matrix(syn["dem"], cfg_cmp, pipeline=syn_pipeline)
+        corr_dram, _, _ = _build_correlation_matrix(dram["dem"], cfg_cmp, pipeline=dram_pipeline)
+
+        fig_cmp = comparison_dashboard(
+            syn["dem"], dram["dem"],
+            traj_lats, traj_lons,
+            syn["results"], dram["results"],
+            corr_syn, corr_dram,
+            obs_syn, ref_syn, obs_dram, ref_dram,
+            azimuths, speeds,
+        )
+
+        cmp_path = os.path.join(cfg.output_path, "comparison_dashboard.html")
+        save_html(fig_cmp, cmp_path)
+        click.echo(f"Comparison dashboard: {cmp_path}")
 
 
 @cli.command()
