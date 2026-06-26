@@ -317,6 +317,3 @@ def navigation_dashboard(
 def save_html(fig: go.Figure, path: str):
     pio.write_html(fig, path, auto_open=False)
 
-
-def show(fig: go.Figure):
-    fig.show()

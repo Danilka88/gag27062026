@@ -122,21 +122,6 @@ class DEMLoader:
             lats[j], _ = self._transformer_xy_to_lonlat.transform(xs[0], y)
         return lons, lats, data
 
-    def terrain_std_in_bbox(self, center_lat: float, center_lon: float, radius_deg: float = 0.01) -> float:
-        lat_min = center_lat - radius_deg
-        lat_max = center_lat + radius_deg
-        lon_min = center_lon - radius_deg
-        lon_max = center_lon + radius_deg
-        row_min, col_min = self._lonlat_to_pixel(lon_min, lat_min)
-        row_max, col_max = self._lonlat_to_pixel(lon_max, lat_max)
-        r0, r1 = int(min(row_min, row_max)), int(max(row_min, row_max)) + 1
-        c0, c1 = int(min(col_min, col_max)), int(max(col_min, col_max)) + 1
-        data = self._ds.values
-        patch = data[max(0, r0):min(data.shape[0], r1), max(0, c0):min(data.shape[1], c1)]
-        if patch.size < 4:
-            return 0.0
-        return float(np.nanstd(patch))
-
     def normalize_coordinates(self, lats: np.ndarray, lons: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         bounds = self.bounds
         lats = np.clip(lats, bounds[1], bounds[3])

@@ -1,6 +1,5 @@
 from typing import List, Optional, Callable
 import time
-import threading
 from collections import deque
 import numpy as np
 
@@ -163,14 +162,4 @@ class NavigationPipeline:
                     )
                 time.sleep(dt / speed_factor)
 
-    def get_correlation_data(self) -> Optional[dict]:
-        if self.last_result is None:
-            return None
-        return {
-            "observed": self.last_result.observed_profile.tolist(),
-            "reference": self.last_result.reference_profile.tolist(),
-            "azimuth": self.last_result.azimuth_deg,
-            "speed": self.last_result.speed_ms,
-            "correlation": self.last_result.correlation,
-            "confidence": self.last_result.confidence,
-        }
+

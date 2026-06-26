@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import Optional
 from dataclasses import dataclass
 
 import pynmea2
@@ -31,15 +31,6 @@ class NMEAParser:
             return None
         ts = self._timestamp_to_seconds(msg.timestamp)
         return NMEAReading(timestamp=ts, altitude=alt)
-
-    def parse_file(self, path: str) -> List[NMEAReading]:
-        readings = []
-        with open(path) as f:
-            for line in f:
-                r = self.parse_line(line)
-                if r is not None:
-                    readings.append(r)
-        return readings
 
     @staticmethod
     def _timestamp_to_seconds(t) -> float:

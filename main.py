@@ -21,6 +21,11 @@ from gagarin.viz import (
 from gagarin.config import Config
 
 
+@click.group()
+def cli():
+    pass
+
+
 @cli.command()
 @click.option("--place", default="kamchatka", help="Place name or lat,lon")
 @click.option("--output-dir", "-o", default="data/dem", help="Output directory")

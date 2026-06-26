@@ -19,25 +19,4 @@ def extract_terrain_profile(
     return terrain
 
 
-def sliding_window(
-    readings: List[NMEAReading],
-    window_size: int,
-    baro_altitude: Optional[float] = None,
-) -> List[np.ndarray]:
-    config = Config.default()
-    baro = baro_altitude if baro_altitude is not None else config.baro_altitude
 
-    terrain = extract_terrain_profile(readings, baro)
-    if len(terrain) < window_size:
-        return [terrain]
-
-    windows = []
-    for i in range(0, len(terrain) - window_size + 1, window_size // 2):
-        windows.append(terrain[i:i + window_size])
-    return windows
-
-
-def profile_roughness(profile: np.ndarray) -> float:
-    if len(profile) < 2:
-        return 0.0
-    return float(np.std(profile))
