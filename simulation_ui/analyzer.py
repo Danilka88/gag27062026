@@ -1,10 +1,11 @@
 import httpx
 import asyncio
+import os
 
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "gemma4:e4b"
-TIMEOUT_S = 60
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e4b")
+TIMEOUT_S = int(os.environ.get("OLLAMA_TIMEOUT", "600"))
 
 
 def _format_metrics(steps: list[dict]) -> str:
@@ -31,14 +32,15 @@ def build_log(steps: list[dict]) -> str:
         "",
         "ПОШАГОВЫЕ МЕТРИКИ:",
         _format_metrics(steps),
-        "",
-        "СЫРЫЕ ДАННЫЕ ШАГОВ:",
     ]
     for s in steps:
+        m = s.get("metrics", {}) or {}
+        filtered = {k: v for k, v in m.items() if k != "trajectory"}
         lines.append(f"--- Шаг {s.get('number','?')} {s.get('title','?')} ---")
-        lines.append(str(s.get("metrics", {})))
+        lines.append(str(filtered))
         lines.append(s.get("explanation", "")[:200])
-    return "\n".join(lines)
+    log = "\n".join(lines)
+    return log[:8000] if len(log) > 8000 else log
 
 
 def _build_prompt(log: str) -> str:
@@ -105,20 +107,22 @@ async def analyze(steps: list[dict]) -> dict:
     log = build_log(steps)
     prompt = _build_prompt(log)
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
-            resp = await client.post(
-                OLLAMA_URL,
-                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            raw = data.get("response", "")
+        async def _request():
+            async with httpx.AsyncClient(timeout=None) as client:
+                resp = await client.post(
+                    OLLAMA_URL,
+                    json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("response", "")
+        raw = await asyncio.wait_for(_request(), timeout=TIMEOUT_S)
     except httpx.ConnectError:
         return {"error": "Ollama не отвечает на localhost:11434. Запусти `ollama serve`."}
     except httpx.HTTPStatusError as e:
         return {"error": f"Ollama вернул ошибку: {e.response.status_code}"}
     except asyncio.TimeoutError:
-        return {"error": f"Модель {OLLAMA_MODEL} не ответила за {TIMEOUT_S}с."}
+        return {"error": f"Модель {OLLAMA_MODEL} не ответила за {TIMEOUT_S}с. Попробуйте увеличить OLLAMA_TIMEOUT (сейчас {TIMEOUT_S}с) или проверить загрузку модели."}
     result = _parse_response(raw)
     result["model"] = OLLAMA_MODEL
     return result

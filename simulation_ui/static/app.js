@@ -380,21 +380,35 @@ async function runAiAnalysis() {
             return;
         }
 
+        function _escapeHtml(s) {
+            if (!s) return '';
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        const severityIcon = s => s === 'high' ? '🔴' : s === 'medium' ? '🟡' : '🟢';
+        const severityColor = s => s === 'high' ? '#ea868f' : s === 'medium' ? '#ffda6a' : '#6ea8fe';
+        const anomHtml = (result.anomalies || []).slice(0, 8).map(a => `
+            <div style="margin:4px 0;font-size:13px;line-height:1.4">
+                <span style="color:${severityColor(a.severity)}">${severityIcon(a.severity)} ${_escapeHtml(a.text)}</span>
+            </div>
+        `).join('');
+        const sugHtml = (result.suggestions || []).slice(0, 8).map((s, i) => `
+            <div style="margin:4px 0;font-size:13px;line-height:1.4;color:#75b798">
+                ${i + 1}. ${_escapeHtml(s.text)}
+            </div>
+        `).join('');
         const svg = `
-<svg viewBox="0 0 500 320" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
-<rect width="500" height="320" fill="#212529"/>
-<text x="250" y="24" fill="#dee2e6" font-size="13" text-anchor="middle" font-family="monospace" font-weight="bold">📋 Саммари</text>
-<text x="30" y="50" fill="#adb5bd" font-size="10" font-family="monospace">${result.summary || '—'}</text>
-<text x="250" y="90" fill="#dee2e6" font-size="13" text-anchor="middle" font-family="monospace" font-weight="bold">🔍 Аномалии (${(result.anomalies || []).length})</text>
-${(result.anomalies || []).slice(0, 4).map((a, i) =>
-    `<text x="30" y="${115 + i * 20}" fill="${a.severity === 'high' ? '#ea868f' : a.severity === 'medium' ? '#ffda6a' : '#6ea8fe'}" font-size="9" font-family="monospace">${a.severity === 'high' ? '🔴' : a.severity === 'medium' ? '🟡' : '🟢'} ${a.text.length > 80 ? a.text.slice(0, 80) + '…' : a.text}</text>`
-).join('')}
-<text x="250" y="210" fill="#dee2e6" font-size="13" text-anchor="middle" font-family="monospace" font-weight="bold">💡 Предложения (${(result.suggestions || []).length})</text>
-${(result.suggestions || []).slice(0, 4).map((s, i) =>
-    `<text x="30" y="${235 + i * 20}" fill="#75b798" font-size="9" font-family="monospace">${i + 1}. ${s.text.length > 80 ? s.text.slice(0, 80) + '…' : s.text}</text>`
-).join('')}
-<text x="250" y="310" fill="#495057" font-size="8" text-anchor="middle" font-family="monospace">Модель: ${result.model || 'gemma4:e4b'}</text>
-</svg>`;
+<div style="padding:0.5rem 1rem 1rem;text-align:left;font-family:monospace">
+    <div style="font-size:15px;font-weight:700;color:#dee2e6;margin-bottom:8px">📋 Саммари</div>
+    <div style="font-size:13px;color:#adb5bd;line-height:1.5;margin-bottom:16px">${_escapeHtml(result.summary || '—')}</div>
+
+    <div style="font-size:15px;font-weight:700;color:#dee2e6;margin-bottom:8px">🔍 Аномалии (${(result.anomalies || []).length})</div>
+    ${anomHtml}
+
+    <div style="font-size:15px;font-weight:700;color:#dee2e6;margin-top:16px;margin-bottom:8px">💡 Предложения (${(result.suggestions || []).length})</div>
+    ${sugHtml}
+
+    <div style="margin-top:16px;font-size:11px;color:#495057">Модель: ${_escapeHtml(result.model || 'gemma4:e4b')}</div>
+</div>`;
 
         const aiStep = {
             id: 'ai-analysis',
