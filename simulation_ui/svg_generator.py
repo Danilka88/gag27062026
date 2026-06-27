@@ -671,3 +671,202 @@ def svg_r_matrix(base_r: float, scale: float, color: str = "#ffda6a") -> str:
 
 def svg_empty(msg: str = "Нет данных") -> str:
     return _svg_wrap(f'<text x="240" y="105" fill="#adb5bd" font-size="14" text-anchor="middle" font-family="monospace">{msg}</text>', 200)
+
+
+def svg_recovery_drift(lost_start: int, lost_end: int, total_n: int, drift_accumulated_m: float) -> str:
+    parts = []
+    parts.append(f'<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Дрейф INS — потеря корреляции</text>')
+    bar_w = 440
+    start_x = 30 + lost_start / max(total_n, 1) * bar_w
+    end_x = 30 + lost_end / max(total_n, 1) * bar_w
+    parts.append(f'<rect x="30" y="50" width="{bar_w}" height="30" fill="#2b3035" rx="4" stroke="#495057" stroke-width="1"/>')
+    parts.append(f'<rect x="{start_x:.1f}" y="50" width="{end_x - start_x:.1f}" height="30" fill="#ea868f" fill-opacity="0.4" rx="4"/>')
+    parts.append(f'<text x="250" y="70" fill="#ea868f" font-size="12" text-anchor="middle" font-family="monospace">⚠️ Потеря TERCOM: {lost_end - lost_start} отсчётов</text>')
+    parts.append(f'<text x="30" y="105" fill="#6ea8fe" font-size="9" font-family="monospace">▶ Корреляция есть</text>')
+    parts.append(f'<text x="350" y="105" fill="#ea868f" font-size="9" font-family="monospace">◀ Корреляции нет (dead reckoning)</text>')
+    parts.append(f'<text x="250" y="140" fill="#ffda6a" font-size="22" text-anchor="middle" font-weight="bold" font-family="monospace">{drift_accumulated_m:.0f} м</text>')
+    parts.append(f'<text x="250" y="160" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">накопленный дрейф за время потери</text>')
+    return _svg_wrap("".join(parts), 190)
+
+
+def svg_recovery_heatmap(search_radius_m: float, best_corr: float, confidence: float) -> str:
+    grid_size = 7
+    cell_size = 380 / grid_size
+    half_span = search_radius_m
+    parts = []
+    parts.append(f'<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Position Grid Search — {grid_size}×{grid_size}</text>')
+    parts.append('<text x="6" y="115" fill="#adb5bd" font-size="8" text-anchor="middle" transform="rotate(-90,6,115)" font-family="monospace">N (м)</text>')
+    parts.append('<text x="250" y="245" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">E (м)</text>')
+    for i in range(grid_size):
+        for j in range(grid_size):
+            t = (i * grid_size + j) / (grid_size * grid_size)
+            r = int(50 + 150 * t)
+            b = int(200 - 150 * t)
+            color = f"#{r:02x}, {b//2:02x}, {b:02x}"
+            x = 60 + j * cell_size
+            y = 30 + i * cell_size
+            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{cell_size:.1f}" height="{cell_size:.1f}" fill="rgb({color})" stroke="#495057" stroke-width="0.3"/>')
+    best_ri, best_ci = grid_size // 2, grid_size // 2
+    cx = 60 + best_ci * cell_size + cell_size / 2
+    cy = 30 + best_ri * cell_size + cell_size / 2
+    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{cell_size * 0.35:.1f}" fill="none" stroke="#fff" stroke-width="2"/>')
+    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" fill="#fff"/>')
+    for i in range(3):
+        offset = int((i - 1) * half_span / 3)
+        x_t = 60 + (i * (grid_size - 1) // 2) * cell_size + cell_size / 2
+        y_t = 30 + (i * (grid_size - 1) // 2) * cell_size + cell_size / 2
+        parts.append(f'<text x="{x_t:.1f}" y="250" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">{offset}</text>')
+        parts.append(f'<text x="54" y="{y_t + 3:.1f}" fill="#adb5bd" font-size="7" text-anchor="end" font-family="monospace">{offset}</text>')
+    parts.append(f'<rect x="455" y="30" width="10" height="180" fill="none" stroke="#495057" stroke-width="1"/>')
+    for i in range(5):
+        t = 1 - i / 4
+        r = int(50 + 150 * t)
+        b = int(200 - 150 * t)
+        color = f"#{r:02x}, {b//2:02x}, {b:02x}"
+        parts.append(f'<rect x="455" y="{30 + i * 45}" width="10" height="45" fill="rgb({color})" stroke="none"/>')
+    parts.append('<text x="460" y="26" fill="#dee2e6" font-size="7" text-anchor="middle" font-family="monospace">NCC</text>')
+    parts.append(f'<text x="460" y="216" fill="#adb5bd" font-size="6" text-anchor="middle" font-family="monospace">min</text>')
+    parts.append(f'<text x="250" y="275" fill="#75b798" font-size="10" text-anchor="middle" font-family="monospace">best NCC: {best_corr:.3f} | confidence: {confidence:.2f}</text>')
+    return _svg_wrap("".join(parts), 290)
+
+
+def svg_recovery_position(true_lat, true_lon, recovered_lat, recovered_lon,
+                          dr_lat, dr_lon, recovery_error_m: float) -> str:
+    pw, ph = 440, 220
+    all_lats = [true_lat, recovered_lat, dr_lat]
+    all_lons = [true_lon, recovered_lon, dr_lon]
+    lat_min, lat_max = min(all_lats), max(all_lats)
+    lon_min, lon_max = min(all_lons), max(all_lons)
+    lat_rng = max(lat_max - lat_min, 1e-6)
+    lon_rng = max(lon_max - lon_min, 1e-6)
+    margin = max(lat_rng * 0.3, lon_rng * 0.3, 0.0005)
+    lat_min -= margin
+    lat_max += margin
+    lon_min -= margin
+    lon_max += margin
+    if lat_max <= lat_min: lat_max = lat_min + 0.001
+    if lon_max <= lon_min: lon_max = lon_min + 0.001
+
+    def _pt(lat, lon):
+        x = 30 + (lon - lon_min) / (lon_max - lon_min) * pw
+        y = 15 + ph - (lat - lat_min) / (lat_max - lat_min) * ph
+        return x, y
+
+    def _tick(v):
+        if abs(v) < 1: return f"{v:.5f}"
+        if abs(v) < 10: return f"{v:.4f}"
+        return f"{v:.3f}"
+
+    parts = []
+    parts.append(f'<text x="250" y="14" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Восстановление позиции — три точки</text>')
+
+    tx, ty = _pt(true_lat, true_lon)
+    rx, ry = _pt(recovered_lat, recovered_lon)
+    dx, dy = _pt(dr_lat, dr_lon)
+
+    parts.append(f'<line x1="{tx:.1f}" y1="{ty:.1f}" x2="{dx:.1f}" y2="{dy:.1f}" stroke="#ea868f" stroke-width="1" stroke-dasharray="4,4" stroke-opacity="0.5"/>')
+    parts.append(f'<line x1="{tx:.1f}" y1="{ty:.1f}" x2="{rx:.1f}" y2="{ry:.1f}" stroke="#75b798" stroke-width="1.5" stroke-dasharray="3,3"/>')
+
+    parts.append(f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="7" fill="none" stroke="#ea868f" stroke-width="2"/>')
+    parts.append(f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="3" fill="#ea868f"/>')
+    parts.append(f'<text x="{dx:.1f}" y="{dy - 10:.1f}" fill="#ea868f" font-size="8" text-anchor="middle" font-family="monospace">DR (было)</text>')
+
+    parts.append(f'<circle cx="{tx:.1f}" cy="{ty:.1f}" r="7" fill="none" stroke="#75b798" stroke-width="2"/>')
+    parts.append(f'<circle cx="{tx:.1f}" cy="{ty:.1f}" r="3" fill="#75b798"/>')
+    parts.append(f'<text x="{tx:.1f}" y="{ty + 14:.1f}" fill="#75b798" font-size="8" text-anchor="middle" font-family="monospace">True (факт)</text>')
+
+    parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="8" fill="none" stroke="#6ea8fe" stroke-width="2"/>')
+    parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="4" fill="#6ea8fe"/>')
+    parts.append(f'<text x="{rx:.1f}" y="{ry - 10:.1f}" fill="#6ea8fe" font-size="8" text-anchor="middle" font-family="monospace">Recovered</text>')
+
+    for i in range(4):
+        frac = i / 3
+        y_t = 15 + ph * (1 - frac)
+        x_t = 30 + pw * frac
+        lat_v = lat_min + frac * (lat_max - lat_min)
+        lon_v = lon_min + frac * (lon_max - lon_min)
+        parts.append(f'<line x1="26" y1="{y_t:.1f}" x2="30" y2="{y_t:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="24" y="{y_t + 3:.1f}" fill="#adb5bd" font-size="7" text-anchor="end" font-family="monospace">{_tick(lat_v)}</text>')
+        parts.append(f'<line x1="{x_t:.1f}" y1="{15 + ph:.1f}" x2="{x_t:.1f}" y2="{15 + ph + 4:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="{x_t:.1f}" y="{15 + ph + 14:.1f}" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">{_tick(lon_v)}</text>')
+
+    parts.append('<rect x="28" y="22" width="100" height="44" fill="#212529" fill-opacity="0.85" rx="4"/>')
+    parts.append(f'<text x="34" y="35" fill="#6ea8fe" font-size="9" font-family="monospace">Recovered</text>')
+    parts.append(f'<text x="34" y="47" fill="#75b798" font-size="9" font-family="monospace">True</text>')
+    parts.append(f'<text x="34" y="59" fill="#ea868f" font-size="9" font-family="monospace">DR</text>')
+    parts.append(f'<text x="{rx:.1f}" y="{15 + ph + 30:.1f}" fill="#ffda6a" font-size="10" text-anchor="middle" font-family="monospace">Ошибка восстановления: {recovery_error_m:.1f} м</text>')
+    parts.append('<text x="250" y="270" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">долгота</text>')
+    parts.append('<text x="10" y="130" fill="#adb5bd" font-size="9" text-anchor="middle" transform="rotate(-90,10,130)" font-family="monospace">широта</text>')
+    return _svg_wrap("".join(parts), 285)
+
+
+def svg_replanned_route(old_route_lats, old_route_lons,
+                         recovery_lat, recovery_lon,
+                         new_route_lats, new_route_lons,
+                         finish_lat, finish_lon,
+                         total_distance_km: float) -> str:
+    pw, ph = 440, 220
+    all_lats = old_route_lats + new_route_lats + [recovery_lat, finish_lat]
+    all_lons = old_route_lons + new_route_lons + [recovery_lon, finish_lon]
+    lat_min, lat_max = min(all_lats), max(all_lats)
+    lon_min, lon_max = min(all_lons), max(all_lons)
+    lat_rng = max(lat_max - lat_min, 1e-6)
+    lon_rng = max(lon_max - lon_min, 1e-6)
+    margin = max(lat_rng * 0.1, lon_rng * 0.1, 0.0002)
+    lat_min -= margin; lat_max += margin
+    lon_min -= margin; lon_max += margin
+    if lat_max <= lat_min: lat_max = lat_min + 0.001
+    if lon_max <= lon_min: lon_max = lon_min + 0.001
+
+    def _pts(lats, lons):
+        pts = []
+        for la, lo in zip(lats, lons):
+            x = 30 + (lo - lon_min) / (lon_max - lon_min) * pw
+            y = 15 + ph - (la - lat_min) / (lat_max - lat_min) * ph
+            pts.append(f"{x:.1f},{y:.1f}")
+        return " ".join(pts)
+
+    def _pt(la, lo):
+        x = 30 + (lo - lon_min) / (lon_max - lon_min) * pw
+        y = 15 + ph - (la - lat_min) / (lat_max - lat_min) * ph
+        return x, y
+
+    def _tick(v):
+        if abs(v) < 1: return f"{v:.4f}"
+        if abs(v) < 10: return f"{v:.3f}"
+        return f"{v:.2f}"
+
+    parts = []
+    parts.append(f'<text x="250" y="14" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Перестроение маршрута к финишу</text>')
+
+    parts.append(f'<polyline points="{_pts(old_route_lats, old_route_lons)}" fill="none" stroke="#495057" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4,4" stroke-opacity="0.5"/>')
+    parts.append(f'<polyline points="{_pts(new_route_lats, new_route_lons)}" fill="none" stroke="#75b798" stroke-width="3" stroke-linejoin="round"/>')
+
+    old_end_x, old_end_y = _pt(finish_lat, finish_lon)
+    parts.append(f'<circle cx="{old_end_x:.1f}" cy="{old_end_y:.1f}" r="6" fill="#ea868f" stroke="#212529" stroke-width="1.5"/>')
+    parts.append(f'<text x="{old_end_x:.1f}" y="{old_end_y - 8:.1f}" fill="#ea868f" font-size="8" text-anchor="middle" font-family="monospace">📍 Финиш</text>')
+
+    rx, ry = _pt(recovery_lat, recovery_lon)
+    parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="8" fill="none" stroke="#6ea8fe" stroke-width="2"/>')
+    parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="4" fill="#6ea8fe"/>')
+    parts.append(f'<text x="{rx:.1f}" y="{ry - 10:.1f}" fill="#6ea8fe" font-size="8" text-anchor="middle" font-family="monospace">🔄 Recovery</text>')
+
+    for i in range(4):
+        frac = i / 3
+        y_t = 15 + ph * (1 - frac)
+        x_t = 30 + pw * frac
+        lat_v = lat_min + frac * (lat_max - lat_min)
+        lon_v = lon_min + frac * (lon_max - lon_min)
+        parts.append(f'<line x1="26" y1="{y_t:.1f}" x2="30" y2="{y_t:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="24" y="{y_t + 3:.1f}" fill="#adb5bd" font-size="7" text-anchor="end" font-family="monospace">{_tick(lat_v)}</text>')
+        parts.append(f'<line x1="{x_t:.1f}" y1="{15 + ph:.1f}" x2="{x_t:.1f}" y2="{15 + ph + 4:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="{x_t:.1f}" y="{15 + ph + 14:.1f}" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">{_tick(lon_v)}</text>')
+
+    parts.append('<rect x="28" y="22" width="110" height="50" fill="#212529" fill-opacity="0.85" rx="4"/>')
+    parts.append('<line x1="34" y1="32" x2="50" y2="32" stroke="#495057" stroke-width="2" stroke-dasharray="4,4" stroke-opacity="0.5"/>')
+    parts.append('<text x="55" y="35" fill="#6c757d" font-size="8" font-family="monospace">старый маршрут</text>')
+    parts.append('<line x1="34" y1="44" x2="50" y2="44" stroke="#75b798" stroke-width="2"/>')
+    parts.append('<text x="55" y="47" fill="#75b798" font-size="8" font-family="monospace">новый маршрут</text>')
+    parts.append(f'<text x="250" y="270" fill="#ffda6a" font-size="10" text-anchor="middle" font-family="monospace">Новая дистанция до финиша: {total_distance_km:.2f} км</text>')
+    parts.append('<text x="250" y="285" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">долгота</text>')
+    return _svg_wrap("".join(parts), 295)

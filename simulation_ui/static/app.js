@@ -1,6 +1,6 @@
 const state = {
     steps: [],
-    placeholders: 19,
+    placeholders: 23,
     currentIndex: -1,
     isPlaying: false,
     isComplete: false,
@@ -8,6 +8,7 @@ const state = {
     timer: null,
     scenarioId: null,
     eventSource: null,
+    activeTab: 'pipeline',
 };
 
 const mapState = {
@@ -31,6 +32,7 @@ const STEP_NAMES = [
     "NCC", "Lag", "Агрегирование", "Discrimination",
     "R-матрица", "Траектория", "ESKF",
     "Качество", "Итог", "Анализ ИИ", "Карта маршрута",
+    "Потеря позиции", "Position Grid Search", "Результат recovery", "Перестроение",
 ];
 
 async function loadScenarios() {
@@ -90,6 +92,7 @@ function startSimulation(scenarioId) {
 
     document.getElementById('landing-screen').style.display = 'none';
     document.getElementById('sim-screen').style.display = 'flex';
+    document.getElementById('tab-bar').style.display = 'flex';
 
     prefetchPlaceholders();
     updateProgress();
@@ -114,6 +117,7 @@ function startSimulation(scenarioId) {
         setStatus('done', 'Завершено');
         state.eventSource.close();
         document.getElementById('ai-section').style.display = 'block';
+        updateTabBar();
         if (!state.isPlaying && state.steps.length > 0) {
             state.currentIndex = state.steps.length - 1;
             renderCurrentStep();
@@ -169,11 +173,14 @@ function updateProgress() {
 function updateStepList() {
     const container = document.getElementById('step-list');
     const displaySteps = state.steps.length > 0 ? state.steps : [];
+    const tabSteps = getTabSteps(state.activeTab);
+    const tabStepSet = new Set(tabSteps);
     const totalSlots = Math.max(displaySteps.length, state.placeholders);
     let html = '';
     let currentPhase = '';
     for (let i = 0; i < totalSlots; i++) {
         if (i < displaySteps.length) {
+            if (!tabStepSet.has(i)) continue;
             const step = displaySteps[i];
             if (step.phase_label !== currentPhase) {
                 currentPhase = step.phase_label;
@@ -189,6 +196,7 @@ function updateStepList() {
                 <div class="step-desc">${step.short_desc || ''}</div>
             </div>`;
         } else {
+            if (state.activeTab !== 'pipeline') continue;
             html += `<div class="step-entry pending disabled" style="opacity:0.5">
                 <span class="step-num">${i + 1}</span>${STEP_NAMES[i] || '...'}
             </div>`;
@@ -846,6 +854,56 @@ function updateElevationChart(pos) {
     mapState.elevationChart.bufferFull = pos >= ws;
     mapState.elevationChart.crosshairPos = pos;
     mapState.elevationChart.draw();
+}
+
+/* --- Tab navigation --- */
+
+function switchTab(tabId) {
+    state.activeTab = tabId;
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+    });
+    const tabSteps = getTabSteps(tabId);
+    if (tabSteps.length > 0) {
+        const firstIdx = tabSteps[0];
+        if (state.currentIndex !== firstIdx) {
+            state.currentIndex = firstIdx;
+            renderCurrentStep();
+        }
+    }
+    updateStepList();
+}
+
+function getTabSteps(tabId) {
+    const phaseMap = {
+        'pipeline': ['pre-flight', 'data', 'correlation', 'filter', 'result', 'analysis'],
+        'recovery': ['recovery'],
+        'replan': ['replan'],
+    };
+    const phases = phaseMap[tabId] || phaseMap.pipeline;
+    return state.steps
+        .map((s, i) => ({ idx: i, phase: s.phase }))
+        .filter(s => phases.includes(s.phase))
+        .map(s => s.idx)
+        .sort((a, b) => a - b);
+}
+
+function updateTabBar() {
+    const tabBar = document.getElementById('tab-bar');
+    const tabs = ['pipeline', 'recovery', 'replan'];
+    let anyVisible = false;
+    tabs.forEach(tabId => {
+        const btn = tabBar.querySelector(`[data-tab="${tabId}"]`);
+        if (!btn) return;
+        const steps = getTabSteps(tabId);
+        const visible = steps.length > 0 && (tabId === 'pipeline' || state.isComplete);
+        btn.style.display = visible ? 'inline-block' : 'none';
+        if (tabId === state.activeTab && !visible) {
+            switchTab('pipeline');
+        }
+        if (visible) anyVisible = true;
+    });
+    tabBar.style.display = anyVisible ? 'flex' : 'none';
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

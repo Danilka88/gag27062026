@@ -484,6 +484,43 @@ body {
 .phase-filter .step-phase-badge { color: #b580d1; border-color: #b580d133; }
 .phase-result .step-phase-badge { color: #ea868f; border-color: #ea868f33; }
 .phase-analysis .step-phase-badge { color: #b580d1; border-color: #b580d133; }
+.phase-recovery .step-phase-badge { color: #ffda6a; border-color: #ffda6a33; }
+.phase-replan .step-phase-badge { color: #75b798; border-color: #75b79833; }
+
+/* Tab bar */
+.tab-bar {
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem 1.5rem;
+    background: #2b3035;
+    border-bottom: 1px solid #495057;
+    flex-shrink: 0;
+}
+
+.tab-btn {
+    padding: 0.4rem 1rem;
+    border: 1px solid #495057;
+    border-radius: 6px;
+    background: #212529;
+    color: #adb5bd;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+
+.tab-btn:hover {
+    background: #343a40;
+    color: #dee2e6;
+}
+
+.tab-btn.active {
+    background: #6ea8fe33;
+    border-color: #6ea8fe;
+    color: #6ea8fe;
+    font-weight: 600;
+}
 
 /* AI analysis button */
 #ai-section {

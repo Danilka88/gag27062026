@@ -19,7 +19,11 @@ from simulation_ui.svg_generator import (
     svg_eskf_error, svg_quality, svg_result, svg_corridor,
     svg_fingerprints, svg_empty, svg_aggregated_profile,
     svg_rolling_discrimination, svg_r_matrix,
+    svg_recovery_drift, svg_recovery_heatmap, svg_recovery_position,
+    svg_replanned_route,
 )
+from gagarin.recovery import LostRecoveryModule
+from gagarin.replanning import RouteReplanner
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -623,3 +627,86 @@ class SimulationRunner:
             },
         }
         yield _make_step(18, "", _serialize(trajectory_data))
+
+        recovery = LostRecoveryModule(dem, cfg)
+        lost_segments = recovery.detect_lost_segments(estimates, min_consecutive=5)
+        lost_start, lost_end = None, None
+        if lost_segments:
+            lost_start, lost_end = lost_segments[-1]
+            drift_m = recovery.compute_distance_m(true_lats[lost_start], true_lons[lost_start],
+                                                   true_lats[lost_end], true_lons[lost_end])
+            yield _make_step(19, svg_recovery_drift(lost_start, lost_end, len(nmea_lines), drift_m), {
+                "lost_start": lost_start,
+                "lost_end": lost_end,
+                "drift_accumulated_m": f"{drift_m:.1f}",
+                "lost_duration_s": f"{(lost_end - lost_start) / cfg.nmea_freq_hz:.1f}",
+            })
+
+            last_good_idx = lost_start - 1 if lost_start > 0 else 0
+            last_good_est = estimates[min(last_good_idx, len(estimates) - 1)]
+            dr_lat = last_good_est.position_lat
+            dr_lon = last_good_est.position_lon
+
+            true_target_lat = true_lats[min(lost_end + 1, len(true_lats) - 1)]
+            true_target_lon = true_lons[min(lost_end + 1, len(true_lons) - 1)]
+
+            rec_window = min(data.shape[0], cfg.window_size)
+            rec_readings = all_readings[min(lost_end, len(all_readings) - 1) - rec_window + 1:min(lost_end, len(all_readings) - 1) + 1]
+            rec_profile = extract_terrain_profile(rec_readings, cfg.baro_altitude)
+            if len(rec_profile) < 5:
+                rec_profile = np.array([100.0] * rec_window)
+
+            rec_result = recovery.recover(
+                rec_profile, dr_lat, dr_lon,
+                last_good_est.azimuth_deg if last_good_est else cfg.default_azimuth,
+                last_good_est.speed_ms if last_good_est else cfg.default_speed,
+                search_radius_m=500.0, grid_size=7,
+            )
+
+            rec_error = recovery.compute_distance_m(rec_result.recovered_lat, rec_result.recovered_lon,
+                                                     true_target_lat, true_target_lon)
+
+            yield _make_step(20, svg_recovery_heatmap(500.0, rec_result.correlation, rec_result.confidence), {
+                "best_correlation": f"{rec_result.correlation:.4f}",
+                "confidence": f"{rec_result.confidence:.2f}",
+                "recovered_lat": f"{rec_result.recovered_lat:.6f}",
+                "recovered_lon": f"{rec_result.recovered_lon:.6f}",
+                "grid_size": 7,
+                "search_radius_m": 500.0,
+            })
+
+            yield _make_step(21, svg_recovery_position(
+                true_target_lat, true_target_lon,
+                rec_result.recovered_lat, rec_result.recovered_lon,
+                dr_lat, dr_lon, rec_error,
+            ), {
+                "recovery_error_m": f"{rec_error:.1f}",
+                "true_lat": f"{true_target_lat:.6f}",
+                "true_lon": f"{true_target_lon:.6f}",
+                "dr_lat": f"{dr_lat:.6f}",
+                "dr_lon": f"{dr_lon:.6f}",
+            })
+
+            finish_lat = true_lats[-1]
+            finish_lon = true_lons[-1]
+            replanner = RouteReplanner()
+            route = replanner.replan(rec_result.recovered_lat, rec_result.recovered_lon,
+                                      finish_lat, finish_lon, n_waypoints=20)
+
+            new_lats = [p[0] for p in route.waypoints]
+            new_lons = [p[1] for p in route.waypoints]
+
+            yield _make_step(22, svg_replanned_route(
+                route_lats, route_lons,
+                rec_result.recovered_lat, rec_result.recovered_lon,
+                new_lats, new_lons,
+                finish_lat, finish_lon,
+                route.total_distance_m / 1000.0,
+            ), {
+                "new_distance_km": f"{route.total_distance_m / 1000:.2f}",
+                "n_waypoints": route.n_waypoints,
+                "recovery_lat": f"{rec_result.recovered_lat:.6f}",
+                "recovery_lon": f"{rec_result.recovered_lon:.6f}",
+                "finish_lat": f"{finish_lat:.6f}",
+                "finish_lon": f"{finish_lon:.6f}",
+            })

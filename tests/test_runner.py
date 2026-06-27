@@ -4,13 +4,14 @@ def test_synthetic_scenario_produces_valid_steps():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
     steps = list(runner.run(overrides={"flight_duration": 40}))
-    assert len(steps) == 18
+    assert len(steps) >= 18
     for i, step in enumerate(steps):
         assert 'id' in step
         assert 'number' in step
         assert 'svg' in step
-        if step['id'] != 'trajectory-map':
-            assert len(step['svg']) > 0, f"Step {i} has empty SVG"
+        is_traj = step['id'] in ('trajectory-map',)
+        if not is_traj:
+            assert len(step['svg']) > 0, f"Step {i} ({step['id']}) has empty SVG"
         assert 'metrics' in step
 
 
