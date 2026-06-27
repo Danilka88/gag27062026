@@ -25,7 +25,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SCENARIOS = {
     "synthetic": {
-        "name": "Камчатка (синтетический)",
+        "name": "Камчатка — плавный рельеф",
         "description": "Плавный рельеф, σ=99 м — идеален для отладки TERCOM",
         "dem_path": "data/dem/synthetic_kamchatka.tif",
         "dem_name": "Synthetic Kamchatka",
@@ -35,7 +35,7 @@ SCENARIOS = {
         "flight_duration": 40.0,
     },
     "dramatic": {
-        "name": "Камчатка (драматический)",
+        "name": "Камчатка — вулканы и каньоны",
         "description": "6 вулканов + гребни + каньоны, σ=688 м — сложный рельеф",
         "dem_path": "data/dem/dramatic_kamchatka.tif",
         "dem_name": "Dramatic Kamchatka",

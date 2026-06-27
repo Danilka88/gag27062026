@@ -289,7 +289,7 @@ def _generate_dramatic_dem(path: str, nx: int = 400, ny: int = 400):
 DEM_CONFIGS = [
     {
         "id": "synthetic_kamchatka",
-        "name": "Камчатка (синтетический)",
+        "name": "Камчатка — плавный рельеф",
         "description": "Плавный рельеф, σ=95 м — идеален для отладки TERCOM",
         "dem_name": "Synthetic Kamchatka",
         "lat_range": (55.97, 56.23),
@@ -304,7 +304,7 @@ DEM_CONFIGS = [
     },
     {
         "id": "dramatic_kamchatka",
-        "name": "Камчатка (драматический)",
+        "name": "Камчатка — вулканы и каньоны",
         "description": "6 вулканов + гребни + каньоны, σ=687 м — сложный рельеф",
         "dem_name": "Dramatic Kamchatka",
         "lat_range": (55.97, 56.23),
