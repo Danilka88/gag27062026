@@ -777,7 +777,6 @@ class SimulationRunner:
                         landing_zone.lat, landing_zone.lon,
                         landing_zone.polygon_lats, landing_zone.polygon_lons,
                         landing_zone.flatness_m, landing_zone.area_m2,
-                        search_radius_m=500.0,
                     ), {
                         "zone_lat": f"{landing_zone.lat:.6f}",
                         "zone_lon": f"{landing_zone.lon:.6f}",

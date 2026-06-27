@@ -959,7 +959,6 @@ def svg_landing_zone(
     polygon_lons: list,
     flatness_m: float,
     area_m2: float,
-    search_radius_m: float = 500.0,
 ) -> str:
     pw, ph = 440, 220
     all_lats = list(dem_lats) + polygon_lats + [center_lat, zone_lat]
