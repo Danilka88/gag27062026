@@ -689,28 +689,30 @@ def svg_recovery_drift(lost_start: int, lost_end: int, total_n: int, drift_accum
     return _svg_wrap("".join(parts), 190)
 
 
-def svg_recovery_heatmap(search_radius_m: float, best_corr: float, confidence: float) -> str:
+def svg_recovery_heatmap(search_radius_m: float, best_corr: float, confidence: float,
+                          best_ri: int = 3, best_ci: int = 3) -> str:
     grid_size = 7
     cell_size = 380 / grid_size
     half_span = search_radius_m
     parts = []
-    parts.append(f'<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Position Grid Search — {grid_size}×{grid_size}</text>')
-    parts.append('<text x="6" y="115" fill="#adb5bd" font-size="8" text-anchor="middle" transform="rotate(-90,6,115)" font-family="monospace">N (м)</text>')
-    parts.append('<text x="250" y="245" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">E (м)</text>')
+    parts.append(f'<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Поиск по сетке — {grid_size}×{grid_size}</text>')
+    parts.append('<text x="6" y="115" fill="#adb5bd" font-size="8" text-anchor="middle" transform="rotate(-90,6,115)" font-family="monospace">С (м)</text>')
+    parts.append('<text x="250" y="245" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">В (м)</text>')
     for i in range(grid_size):
         for j in range(grid_size):
             t = (i * grid_size + j) / (grid_size * grid_size)
             r = int(50 + 150 * t)
             b = int(200 - 150 * t)
-            color = f"#{r:02x}, {b//2:02x}, {b:02x}"
             x = 60 + j * cell_size
             y = 30 + i * cell_size
-            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{cell_size:.1f}" height="{cell_size:.1f}" fill="rgb({color})" stroke="#495057" stroke-width="0.3"/>')
-    best_ri, best_ci = grid_size // 2, grid_size // 2
-    cx = 60 + best_ci * cell_size + cell_size / 2
-    cy = 30 + best_ri * cell_size + cell_size / 2
-    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{cell_size * 0.35:.1f}" fill="none" stroke="#fff" stroke-width="2"/>')
-    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" fill="#fff"/>')
+            parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{cell_size:.1f}" height="{cell_size:.1f}" fill="rgb({r},{b//2},{b})" stroke="#495057" stroke-width="0.3"/>')
+
+    if 0 <= best_ri < grid_size and 0 <= best_ci < grid_size:
+        cx = 60 + best_ci * cell_size + cell_size / 2
+        cy = 30 + best_ri * cell_size + cell_size / 2
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{cell_size * 0.35:.1f}" fill="none" stroke="#fff" stroke-width="2"/>')
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" fill="#fff"/>')
+
     for i in range(3):
         offset = int((i - 1) * half_span / 3)
         x_t = 60 + (i * (grid_size - 1) // 2) * cell_size + cell_size / 2
@@ -722,11 +724,10 @@ def svg_recovery_heatmap(search_radius_m: float, best_corr: float, confidence: f
         t = 1 - i / 4
         r = int(50 + 150 * t)
         b = int(200 - 150 * t)
-        color = f"#{r:02x}, {b//2:02x}, {b:02x}"
-        parts.append(f'<rect x="455" y="{30 + i * 45}" width="10" height="45" fill="rgb({color})" stroke="none"/>')
+        parts.append(f'<rect x="455" y="{30 + i * 45}" width="10" height="45" fill="rgb({r},{b//2},{b})" stroke="none"/>')
     parts.append('<text x="460" y="26" fill="#dee2e6" font-size="7" text-anchor="middle" font-family="monospace">NCC</text>')
-    parts.append(f'<text x="460" y="216" fill="#adb5bd" font-size="6" text-anchor="middle" font-family="monospace">min</text>')
-    parts.append(f'<text x="250" y="275" fill="#75b798" font-size="10" text-anchor="middle" font-family="monospace">best NCC: {best_corr:.3f} | confidence: {confidence:.2f}</text>')
+    parts.append(f'<text x="460" y="240" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">мин</text>')
+    parts.append(f'<text x="250" y="275" fill="#75b798" font-size="10" text-anchor="middle" font-family="monospace">лучший NCC: {best_corr:.3f} | уверенность: {confidence:.2f}</text>')
     return _svg_wrap("".join(parts), 290)
 
 
@@ -769,15 +770,15 @@ def svg_recovery_position(true_lat, true_lon, recovered_lat, recovered_lon,
 
     parts.append(f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="7" fill="none" stroke="#ea868f" stroke-width="2"/>')
     parts.append(f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="3" fill="#ea868f"/>')
-    parts.append(f'<text x="{dx:.1f}" y="{dy - 10:.1f}" fill="#ea868f" font-size="8" text-anchor="middle" font-family="monospace">DR (было)</text>')
+    parts.append(f'<text x="{dx:.1f}" y="{dy - 10:.1f}" fill="#ea868f" font-size="8" text-anchor="middle" font-family="monospace">DR (счисление)</text>')
 
     parts.append(f'<circle cx="{tx:.1f}" cy="{ty:.1f}" r="7" fill="none" stroke="#75b798" stroke-width="2"/>')
     parts.append(f'<circle cx="{tx:.1f}" cy="{ty:.1f}" r="3" fill="#75b798"/>')
-    parts.append(f'<text x="{tx:.1f}" y="{ty + 14:.1f}" fill="#75b798" font-size="8" text-anchor="middle" font-family="monospace">True (факт)</text>')
+    parts.append(f'<text x="{tx:.1f}" y="{ty + 14:.1f}" fill="#75b798" font-size="8" text-anchor="middle" font-family="monospace">Истина</text>')
 
     parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="8" fill="none" stroke="#6ea8fe" stroke-width="2"/>')
     parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="4" fill="#6ea8fe"/>')
-    parts.append(f'<text x="{rx:.1f}" y="{ry - 10:.1f}" fill="#6ea8fe" font-size="8" text-anchor="middle" font-family="monospace">Recovered</text>')
+    parts.append(f'<text x="{rx:.1f}" y="{ry - 10:.1f}" fill="#6ea8fe" font-size="8" text-anchor="middle" font-family="monospace">Восстановлено</text>')
 
     for i in range(4):
         frac = i / 3
@@ -790,9 +791,9 @@ def svg_recovery_position(true_lat, true_lon, recovered_lat, recovered_lon,
         parts.append(f'<line x1="{x_t:.1f}" y1="{15 + ph:.1f}" x2="{x_t:.1f}" y2="{15 + ph + 4:.1f}" stroke="#495057" stroke-width="0.5"/>')
         parts.append(f'<text x="{x_t:.1f}" y="{15 + ph + 14:.1f}" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">{_tick(lon_v)}</text>')
 
-    parts.append('<rect x="28" y="22" width="100" height="44" fill="#212529" fill-opacity="0.85" rx="4"/>')
-    parts.append(f'<text x="34" y="35" fill="#6ea8fe" font-size="9" font-family="monospace">Recovered</text>')
-    parts.append(f'<text x="34" y="47" fill="#75b798" font-size="9" font-family="monospace">True</text>')
+    parts.append('<rect x="28" y="22" width="120" height="44" fill="#212529" fill-opacity="0.85" rx="4"/>')
+    parts.append(f'<text x="34" y="35" fill="#6ea8fe" font-size="9" font-family="monospace">Восстановлено</text>')
+    parts.append(f'<text x="34" y="47" fill="#75b798" font-size="9" font-family="monospace">Истина</text>')
     parts.append(f'<text x="34" y="59" fill="#ea868f" font-size="9" font-family="monospace">DR</text>')
     parts.append(f'<text x="{rx:.1f}" y="{15 + ph + 30:.1f}" fill="#ffda6a" font-size="10" text-anchor="middle" font-family="monospace">Ошибка восстановления: {recovery_error_m:.1f} м</text>')
     parts.append('<text x="250" y="270" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">долгота</text>')
@@ -839,8 +840,14 @@ def svg_replanned_route(old_route_lats, old_route_lons,
     parts = []
     parts.append(f'<text x="250" y="14" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Перестроение маршрута к финишу</text>')
 
+    old_start_x, old_start_y = _pt(old_route_lats[0], old_route_lons[0]) if old_route_lats else (30, 15)
+    parts.append(f'<circle cx="{old_start_x:.1f}" cy="{old_start_y:.1f}" r="4" fill="#495057" stroke="#212529" stroke-width="1"/>')
+
     parts.append(f'<polyline points="{_pts(old_route_lats, old_route_lons)}" fill="none" stroke="#495057" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4,4" stroke-opacity="0.5"/>')
     parts.append(f'<polyline points="{_pts(new_route_lats, new_route_lons)}" fill="none" stroke="#75b798" stroke-width="3" stroke-linejoin="round"/>')
+
+    new_start_x, new_start_y = _pt(new_route_lats[0], new_route_lons[0]) if new_route_lats else (rx, ry)
+    parts.append(f'<circle cx="{new_start_x:.1f}" cy="{new_start_y:.1f}" r="4" fill="#75b798" stroke="#212529" stroke-width="1.5"/>')
 
     old_end_x, old_end_y = _pt(finish_lat, finish_lon)
     parts.append(f'<circle cx="{old_end_x:.1f}" cy="{old_end_y:.1f}" r="6" fill="#ea868f" stroke="#212529" stroke-width="1.5"/>')
@@ -849,7 +856,7 @@ def svg_replanned_route(old_route_lats, old_route_lons,
     rx, ry = _pt(recovery_lat, recovery_lon)
     parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="8" fill="none" stroke="#6ea8fe" stroke-width="2"/>')
     parts.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="4" fill="#6ea8fe"/>')
-    parts.append(f'<text x="{rx:.1f}" y="{ry - 10:.1f}" fill="#6ea8fe" font-size="8" text-anchor="middle" font-family="monospace">🔄 Recovery</text>')
+    parts.append(f'<text x="{rx:.1f}" y="{ry - 10:.1f}" fill="#6ea8fe" font-size="8" text-anchor="middle" font-family="monospace">🔄 Восстановление</text>')
 
     for i in range(4):
         frac = i / 3
@@ -862,7 +869,7 @@ def svg_replanned_route(old_route_lats, old_route_lons,
         parts.append(f'<line x1="{x_t:.1f}" y1="{15 + ph:.1f}" x2="{x_t:.1f}" y2="{15 + ph + 4:.1f}" stroke="#495057" stroke-width="0.5"/>')
         parts.append(f'<text x="{x_t:.1f}" y="{15 + ph + 14:.1f}" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">{_tick(lon_v)}</text>')
 
-    parts.append('<rect x="28" y="22" width="110" height="50" fill="#212529" fill-opacity="0.85" rx="4"/>')
+    parts.append('<rect x="28" y="22" width="140" height="50" fill="#212529" fill-opacity="0.85" rx="4"/>')
     parts.append('<line x1="34" y1="32" x2="50" y2="32" stroke="#495057" stroke-width="2" stroke-dasharray="4,4" stroke-opacity="0.5"/>')
     parts.append('<text x="55" y="35" fill="#6c757d" font-size="8" font-family="monospace">старый маршрут</text>')
     parts.append('<line x1="34" y1="44" x2="50" y2="44" stroke="#75b798" stroke-width="2"/>')

@@ -12,6 +12,7 @@ from gagarin.profile import extract_terrain_profile
 from gagarin.preprocess import TerrainAnalyzer, _latlon_distance_m, _adaptive_corridor_width
 from gagarin.config import Config
 from gagarin.constants import EARTH_RADIUS
+from gagarin.geo_utils import haversine_m
 from simulation_ui.texts import STEPS as STEP_TEXTS
 from simulation_ui.svg_generator import (
     svg_dem, svg_nmea, svg_buffer, svg_profile,
@@ -633,8 +634,8 @@ class SimulationRunner:
         lost_start, lost_end = None, None
         if lost_segments:
             lost_start, lost_end = lost_segments[-1]
-            drift_m = recovery.compute_distance_m(true_lats[lost_start], true_lons[lost_start],
-                                                   true_lats[lost_end], true_lons[lost_end])
+            drift_m = haversine_m(true_lats[lost_start], true_lons[lost_start],
+                                  true_lats[lost_end], true_lons[lost_end])
             yield _make_step(19, svg_recovery_drift(lost_start, lost_end, len(nmea_lines), drift_m), {
                 "lost_start": lost_start,
                 "lost_end": lost_end,
@@ -647,14 +648,16 @@ class SimulationRunner:
             dr_lat = last_good_est.position_lat
             dr_lon = last_good_est.position_lon
 
-            true_target_lat = true_lats[min(lost_end + 1, len(true_lats) - 1)]
-            true_target_lon = true_lons[min(lost_end + 1, len(true_lons) - 1)]
+            true_target_lat = true_lats[lost_end]
+            true_target_lon = true_lons[lost_end]
 
-            rec_window = min(data.shape[0], cfg.window_size)
-            rec_readings = all_readings[min(lost_end, len(all_readings) - 1) - rec_window + 1:min(lost_end, len(all_readings) - 1) + 1]
+            rec_window = cfg.window_size
+            rec_end = min(lost_end, len(all_readings) - 1)
+            rec_start = max(0, rec_end - rec_window + 1)
+            rec_readings = all_readings[rec_start:rec_end + 1]
             rec_profile = extract_terrain_profile(rec_readings, cfg.baro_altitude)
             if len(rec_profile) < 5:
-                rec_profile = np.array([100.0] * rec_window)
+                rec_profile = np.array([100.0] * max(rec_window, 5))
 
             rec_result = recovery.recover(
                 rec_profile, dr_lat, dr_lon,
@@ -663,10 +666,13 @@ class SimulationRunner:
                 search_radius_m=500.0, grid_size=7,
             )
 
-            rec_error = recovery.compute_distance_m(rec_result.recovered_lat, rec_result.recovered_lon,
-                                                     true_target_lat, true_target_lon)
+            rec_error = haversine_m(rec_result.recovered_lat, rec_result.recovered_lon,
+                                    true_target_lat, true_target_lon)
 
-            yield _make_step(20, svg_recovery_heatmap(500.0, rec_result.correlation, rec_result.confidence), {
+            yield _make_step(20, svg_recovery_heatmap(
+                500.0, rec_result.correlation, rec_result.confidence,
+                rec_result.best_ri, rec_result.best_ci,
+            ), {
                 "best_correlation": f"{rec_result.correlation:.4f}",
                 "confidence": f"{rec_result.confidence:.2f}",
                 "recovered_lat": f"{rec_result.recovered_lat:.6f}",

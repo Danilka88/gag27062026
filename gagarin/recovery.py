@@ -5,7 +5,7 @@ import math
 
 from gagarin.dem_loader import DEMLoader
 from gagarin.correlator import CorrelationMetrics
-from gagarin.geo_utils import offset_coords, offset_coords_batch
+from gagarin.geo_utils import offset_coords_batch, haversine_m
 from gagarin.config import Config
 from gagarin.constants import EARTH_RADIUS
 
@@ -16,9 +16,11 @@ class RecoveryResult:
     recovered_lon: float
     correlation: float
     confidence: float
-    search_grid_lats: List[float]
-    search_grid_lons: List[float]
+    search_grid_lats: List[List[float]]
+    search_grid_lons: List[List[float]]
     correlation_map: np.ndarray
+    best_ri: int
+    best_ci: int
     dr_lat: float
     dr_lon: float
     true_lat: Optional[float] = None
@@ -72,21 +74,22 @@ class LostRecoveryModule:
         corr_map = np.zeros((grid_size, grid_size))
 
         azimuth_rad = math.radians(azimuth_deg)
+        cos_dr_lat = math.cos(math.radians(dr_lat))
 
         for ri in range(grid_size):
             for ci in range(grid_size):
                 offset_north = offsets_1d[ri]
                 offset_east = offsets_1d[ci]
                 dlat = offset_north / EARTH_RADIUS
-                dlon = offset_east / (EARTH_RADIUS * math.cos(math.radians(dr_lat)))
+                dlon = offset_east / (EARTH_RADIUS * cos_dr_lat)
                 hyp_lat = dr_lat + math.degrees(dlat)
                 hyp_lon = dr_lon + math.degrees(dlon)
 
-                hyp_lat, hyp_lon = self.dem.normalize_coordinates(
+                hyp_lat_arr, hyp_lon_arr = self.dem.normalize_coordinates(
                     np.array([hyp_lat]), np.array([hyp_lon])
                 )
-                hyp_lat = float(hyp_lat[0])
-                hyp_lon = float(hyp_lon[0])
+                hyp_lat = float(hyp_lat_arr[0])
+                hyp_lon = float(hyp_lon_arr[0])
 
                 grid_lats[ri, ci] = hyp_lat
                 grid_lons[ri, ci] = hyp_lon
@@ -118,12 +121,8 @@ class LostRecoveryModule:
             search_grid_lats=grid_lats.tolist(),
             search_grid_lons=grid_lons.tolist(),
             correlation_map=corr_map,
+            best_ri=int(best_ri),
+            best_ci=int(best_ci),
             dr_lat=dr_lat,
             dr_lon=dr_lon,
         )
-
-    def compute_distance_m(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        dlat = math.radians(lat2 - lat1)
-        dlon = math.radians(lon2 - lon1)
-        a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-        return 2 * EARTH_RADIUS * math.atan2(math.sqrt(a), math.sqrt(1 - a))
