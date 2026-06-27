@@ -38,9 +38,6 @@ class NavigationPipeline:
         if config.kalman_enabled:
             self.kf = ErrorStateKalmanFilter(dt=1.0 / config.nmea_freq_hz)
 
-        self._last_update_time = None
-        self.running = False
-
     @property
     def is_initialized(self) -> bool:
         return self.center_lat is not None

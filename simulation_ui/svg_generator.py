@@ -222,6 +222,8 @@ def svg_ncc_bar(correlation: float) -> str:
 
 
 def svg_lag(corr_full: np.ndarray, best_lag: int) -> str:
+    if len(corr_full) == 0:
+        return _svg_wrap('<text x="240" y="105" fill="#adb5bd" font-size="14" text-anchor="middle" font-family="monospace">Нет данных</text>', 200)
     n = len(corr_full)
     pw, ph = 440, 180
     vmin, vmax = float(np.min(corr_full)), float(np.max(corr_full))
@@ -425,6 +427,81 @@ def svg_fingerprints(std_values: List[float], grad_values: List[float]) -> str:
     parts.append('<text x="160" y="216" fill="#75b798" font-size="9" font-family="monospace">■ gradient</text>')
     parts.append('<text x="250" y="235" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">точки маршрута</text>')
     return _svg_wrap("".join(parts), 240)
+
+
+def svg_aggregated_profile(profiles: List[np.ndarray], aggregated: np.ndarray) -> str:
+    n_profiles = len(profiles)
+    if n_profiles < 2 or len(aggregated) < 2:
+        return svg_empty("Недостаточно профилей для агрегирования")
+    pw, ph = 440, 180
+    vmin = min(float(np.min(aggregated)), min(float(np.min(p)) for p in profiles)) - 10
+    vmax = max(float(np.max(aggregated)), max(float(np.max(p)) for p in profiles)) + 10
+    if vmax <= vmin:
+        vmax = vmin + 100
+    parts = []
+    parts.append('<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Агрегирование профилей — стабилизация шума</text>')
+    for i in range(5):
+        y = 20 + ph * i / 4
+        val = vmax - (vmax - vmin) * i / 4
+        parts.append(f'<line x1="28" y1="{y:.1f}" x2="470" y2="{y:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="26" y="{y+3:.1f}" fill="#adb5bd" font-size="8" text-anchor="end" font-family="monospace">{val:.0f}</text>')
+    for p in profiles[:min(5, n_profiles)]:
+        pts = []
+        for i in range(len(p)):
+            x = 30 + i * pw / max(len(p) - 1, 1)
+            y = 20 + ph - (p[i] - vmin) / (vmax - vmin) * ph
+            pts.append(f"{x:.1f},{y:.1f}")
+        parts.append(f'<polyline points="{" ".join(pts)}" fill="none" stroke="#4d6b8a" stroke-width="1" stroke-opacity="0.5" stroke-linejoin="round"/>')
+    pts = []
+    for i in range(len(aggregated)):
+        x = 30 + i * pw / max(len(aggregated) - 1, 1)
+        y = 20 + ph - (aggregated[i] - vmin) / (vmax - vmin) * ph
+        pts.append(f"{x:.1f},{y:.1f}")
+    parts.append(f'<polyline points="{" ".join(pts)}" fill="none" stroke="#6ea8fe" stroke-width="2" stroke-linejoin="round"/>')
+    parts.append('<text x="380" y="145" fill="#6ea8fe" font-size="9" font-family="monospace">агрегированный</text>')
+    parts.append('<text x="250" y="230" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">отсчёт вдоль траектории</text>')
+    return _svg_wrap("".join(parts), 260)
+
+
+def svg_rolling_discrimination(current: np.ndarray, previous: np.ndarray, corr: float) -> str:
+    if len(current) < 2 or len(previous) < 2:
+        return svg_empty("Недостаточно данных для rolling discrimination")
+    pw, ph = 440, 150
+    mn = min(len(current), len(previous))
+    vmin = min(float(np.min(current[:mn])), float(np.min(previous[:mn]))) - 10
+    vmax = max(float(np.max(current[:mn])), float(np.max(previous[:mn]))) + 10
+    if vmax <= vmin:
+        vmax = vmin + 100
+    parts = []
+    parts.append('<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Rolling Discrimination — сравнение профилей</text>')
+    parts.append(f'<text x="250" y="32" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">correlation: {corr:.3f}</text>')
+    pts_c, pts_p = [], []
+    for i in range(mn):
+        x = 30 + i * pw / max(mn - 1, 1)
+        y_c = 35 + ph - (current[i] - vmin) / (vmax - vmin) * ph
+        y_p = 35 + ph - (previous[i] - vmin) / (vmax - vmin) * ph
+        pts_c.append(f"{x:.1f},{y_c:.1f}")
+        pts_p.append(f"{x:.1f},{y_p:.1f}")
+    parts.append(f'<polyline points="{" ".join(pts_c)}" fill="none" stroke="#6ea8fe" stroke-width="1.5" stroke-linejoin="round"/>')
+    parts.append(f'<polyline points="{" ".join(pts_p)}" fill="none" stroke="#75b798" stroke-width="1.5" stroke-dasharray="4,3"/>')
+    parts.append('<text x="380" y="165" fill="#6ea8fe" font-size="9" font-family="monospace">текущий</text>')
+    parts.append('<text x="410" y="175" fill="#75b798" font-size="9" font-family="monospace">предыдущий</text>')
+    status = "good" if corr > 0.95 else "marginal" if corr > 0.8 else "poor"
+    parts.append(f'<text x="250" y="230" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">status: {status}</text>')
+    return _svg_wrap("".join(parts), 250)
+
+
+def svg_r_matrix(base_r: float, scale: float, color: str = "#ffda6a") -> str:
+    parts = []
+    parts.append('<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Адаптивная R-матрица — доверие к измерению</text>')
+    parts.append('<rect x="150" y="60" width="200" height="60" rx="6" fill="#2b3035" stroke="#495057" stroke-width="1"/>')
+    parts.append(f'<text x="250" y="85" fill="#dee2e6" font-size="14" text-anchor="middle" font-family="monospace">R_scale: {scale:.1f}x</text>')
+    parts.append(f'<text x="250" y="105" fill="{color}" font-size="10" text-anchor="middle" font-family="monospace">base_R: {base_r:.1f} м²</text>')
+    if scale > 5:
+        parts.append('<text x="250" y="140" fill="#ea868f" font-size="10" text-anchor="middle" font-family="monospace">⚠️ Низкое доверие — фильтр Калмана игнорирует коррекцию</text>')
+    else:
+        parts.append('<text x="250" y="140" fill="#75b798" font-size="10" text-anchor="middle" font-family="monospace">✓ Нормальное доверие — коррекция применяется</text>')
+    return _svg_wrap("".join(parts), 180)
 
 
 def svg_empty(msg: str = "Нет данных") -> str:

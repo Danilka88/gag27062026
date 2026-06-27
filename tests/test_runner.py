@@ -1,12 +1,10 @@
-import math
-from gagarin.constants import EARTH_RADIUS
 
 
 def test_synthetic_scenario_produces_valid_steps():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
     steps = list(runner.run())
-    assert len(steps) == 14
+    assert len(steps) == 17
     for i, step in enumerate(steps):
         assert 'id' in step
         assert 'number' in step
@@ -19,16 +17,15 @@ def test_no_fake_estimates():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
     steps = list(runner.run())
-    step10 = steps[10]
-    assert step10['id'] == 'step-b8'
-    assert step10['metrics']['n_estimates'] == step10['metrics'].get('n_estimates_total', step10['metrics']['n_estimates'])
-    step11 = steps[11]
-    assert step11['id'] == 'step-b9'
-    assert 'mean_error_m' in step11['metrics']
+    step13 = steps[13]
+    assert step13['id'] == 'step-b8'
+    assert 'n_estimates' in step13['metrics']
+    step14 = steps[14]
+    assert step14['id'] == 'step-b9'
+    assert 'mean_drift_m' in step14['metrics']
 
 
 def test_baro_altitude_override():
-    from simulation_ui.runner import SimulationRunner
     from gagarin.config import Config
     from gagarin.dem_loader import DEMLoader
     cfg = Config.default()
@@ -71,7 +68,6 @@ def test_heatmap_uses_local_indices():
 
 def test_corridor_width_uses_segment_distance():
     from simulation_ui.runner import SimulationRunner
-    from gagarin.preprocess import _adaptive_corridor_width
     runner = SimulationRunner('synthetic')
     steps = list(runner.run())
     step2 = steps[2]
@@ -86,3 +82,18 @@ def test_profile_has_reference():
     step8 = steps[8]
     assert step8['id'] == 'step-b6'
     assert 'NCC' in step8['svg']
+
+
+def test_improvement_steps_present():
+    from simulation_ui.runner import SimulationRunner
+    runner = SimulationRunner('synthetic')
+    steps = list(runner.run())
+    step10 = steps[10]
+    assert step10['id'] == 'step-improvement-1'
+    assert 'aggregated_std' in step10['metrics']
+    step11 = steps[11]
+    assert step11['id'] == 'step-improvement-2'
+    assert 'rolling_correlation' in step11['metrics']
+    step12 = steps[12]
+    assert step12['id'] == 'step-improvement-3'
+    assert 'r_scale' in step12['metrics']

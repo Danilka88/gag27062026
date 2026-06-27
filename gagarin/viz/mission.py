@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 import plotly.graph_objects as go
 
-from gagarin.viz.utils import TEMPLATE
+
 
 
 def _load_features(db_path: str):
@@ -102,7 +102,7 @@ def _build_map_traces(wps, feats, info_map_path: Optional[str], cfg: dict):
 
 def _build_info_profile(feats, wp_lats):
     if not feats:
-        return go.Figure().update_layout(template=TEMPLATE, title="Нет данных")
+        return go.Figure().update_layout(template="plotly_dark", title="Нет данных")
 
     indices = [f.get("waypoint_index", i) for i, f in enumerate(feats)]
     std_vals = [f.get("std_elevation", 0) for f in feats]
@@ -133,7 +133,7 @@ def _build_info_profile(feats, wp_lats):
     ))
 
     fig.update_layout(
-        template=TEMPLATE,
+        template="plotly_dark",
         height=350,
         margin=dict(l=60, r=60, t=30, b=40),
         xaxis=dict(title="Индекс точки вдоль маршрута"),
@@ -147,7 +147,7 @@ def _build_info_profile(feats, wp_lats):
 
 def _build_fingerprint_heatmap(feats, wp_lats):
     if not feats or not feats[0].get("expected_ncc_offsets"):
-        return go.Figure().update_layout(template=TEMPLATE, title="Нет fingerprint данных")
+        return go.Figure().update_layout(template="plotly_dark", title="Нет fingerprint данных")
 
     offsets = feats[0].get("offset_distances_m", [])
     n_offsets = len(offsets)
@@ -169,7 +169,7 @@ def _build_fingerprint_heatmap(feats, wp_lats):
         colorbar=dict(title="NCC"),
     ))
     fig.update_layout(
-        template=TEMPLATE,
+        template="plotly_dark",
         height=400,
         margin=dict(l=60, r=40, t=30, b=60),
         xaxis=dict(title="Смещение от трека (м)"),
@@ -203,7 +203,7 @@ def mission_viewer(
     fig_map = go.Figure(data=map_traces)
 
     fig_map.update_layout(
-        template=TEMPLATE,
+        template="plotly_dark",
         height=500,
         margin=dict(l=40, r=40, t=10, b=40),
         xaxis=dict(title="Долгота", scaleanchor="y", scaleratio=1),

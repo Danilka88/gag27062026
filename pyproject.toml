@@ -17,8 +17,6 @@ dependencies = [
     "rioxarray>=0.22",
     "xarray>=2025",
     "plotly>=6.0",
-    "pandas>=2.2",
-    "numba>=0.65",
     "pynmea2>=1.19",
     "pyproj>=3.7",
     "click>=8.1",
@@ -26,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-gagarin = "main:cli"
+gagarin = "gagarin.cli:cli"
 
 [project.optional-dependencies]
 rpi = ["xarray-spatial"]

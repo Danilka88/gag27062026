@@ -40,7 +40,9 @@ class DataGenerator:
         true_terrain = self.dem.elevation_batch(lats, lons)
         noise = self.rng.normal(0, noise_std, size=n)
         radar_altitudes = self.config.baro_altitude - true_terrain + noise
-        radar_altitudes = np.maximum(radar_altitudes, 0.1)
+        min_val = np.min(radar_altitudes)
+        if min_val < 1.0:
+            radar_altitudes += 1.0 - min_val
         return radar_altitudes
 
     def generate_nmea_lines(

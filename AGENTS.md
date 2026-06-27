@@ -5,50 +5,54 @@
 ## Архитектура
 
 ```
-                     ┌─────────────┐
-                     │  main.py    │ ← CLI: run, download-dem, generate-dem, analyze
-                     └──────┬──────┘
-                            │ run
-              ┌─────────────┼─────────────┐
-              ▼             ▼             ▼
-        ┌──────────┐  ┌──────────┐  ┌──────────┐
-        │pipeline  │  │ DataGen  │  │Viz       │
-        │.py       │  │ .py      │  │*.py      │
-        └────┬─────┘  └──────────┘  └────┬─────┘
-             │                            │
-    ┌───────┼──────┬──────┬──────┬───┐    ├──────┬──────┬──────┬──────┬────────┐
-    ▼       ▼      ▼      ▼      ▼   ▼    ▼      ▼      ▼      ▼      ▼        ▼
-┌──────┐ ┌────┐ ┌────┐ ┌────┐ ┌──┐ ┌──┐ ┌────┐ ┌──────┐ ┌────┐ ┌────┐ ┌────────┐
-│buffer│ │cor-│ │est-│ │dem │ │geo│ │qu│ │temp│ │utils │ │dash│ │tra-│ │correla-│
-│.py   │ │rel-│ │ima-│ │loa-│ │_u│ │al│ │late│ │.py   │ │boa-│ │jec-│ │tion.   │
-│NMEABu│ │ator│ │tor │ │der │ │t-│ │it│ │.py  │ │save_ │ │rd  │ │tory│ │py      │
-│ffer  │ │.py │ │.py │ │.py │ │il│ │y.│ │HTML_│ │html()│ │.py │ │.py │ │correla-│
-│deque  │ │TER-│ │Velo│ │DEM │ │s.│ │py│ │TEMP │ │save_ │ │nav- │ │tra- │ │tion_he│
-│adapt. │ │COM │ │cit │ │Lo- │ │py│ │  │ │LATE │ │dashb │ │iga- │ │jec- │ │atmap() │
-│dist.  │ │Cor-│ │yEs│ │ader│ │of│ │  │ │     │ │oard()│ │tion_│ │tory_│ │        │
-│       │ │r-  │ │tim-│ │Co- │ │fs│ │  │ │     │ │get_g │ │das- │ │map( │ │        │
-│       │ │ela-│ │ator│ │ord │ │et│ │  │ │     │ │rid_o │ │hboa │ │)    │ │        │
-│       │ │tor │ │Nav-│ │Tra-│ │_c│ │  │ │     │ │r_fal │ │rd() │ │     │ │        │
-│       │ │Hyp-│ │iga-│ │nsf │ │oo│ │  │ │     │ │lback │ │     │ │     │ │        │
-│       │ │oth-│ │tion│ │DEM-│ │rd│ │  │ │     │ │()    │ │     │ │     │ │        │
-│       │ │esis│ │Est-│ │Int-│ │s_│ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │Sea-│ │ima-│ │erp-│ │ba│ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │rch │ │te  │ │ola-│ │tc│ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │Cor-│ │(da-│ │tor │ │h)│ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │rel-│ │tac-│ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │atio│ │las│ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │n Me│ │s) │ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │tric│ │   │ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
-│       │ │s   │ │   │ │    │ │  │ │  │ │     │ │      │ │     │ │     │ │        │
-└───────┘ └────┘ └───┘ └────┘ └──┘ └──┘ └─────┘ └──────┘ └────┘ └────┘ └────────┘
-                            ┌───────┐ ┌────────┐ ┌──────────┐
-                            │eskf  │ │config  │ │nmea_    │
-                            │.py   │ │.py     │ │parser   │
-                            │State │ │vali-   │ │.py      │
-                            │Error │ │dation  │ │pynmea2  │
-                            │Kalman│ │+ merger│ │wrapper  │
-                            │Filter│ │        │ │         │
-                            └──────┘ └────────┘ └─────────┘
+                    ┌──────────────┐
+                    │ simulation_ui│ ← FastAPI SSE (14-step TERCOM demo)
+                    │ /main.py     │
+                    └──────┬───────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │pipeline  │ │ DataGen  │ │ SVG Gen  │
+        │.py       │ │ .py     │ │ .py      │
+        └────┬─────┘ └──────────┘ └──────────┘
+             │
+    ┌───────┼──────┬──────┬──────┬────┐
+    ▼       ▼      ▼      ▼      ▼    ▼
+┌──────┐ ┌────┐ ┌────┐ ┌────┐ ┌──┐ ┌──┐
+│buffer│ │cor-│ │est-│ │dem │ │geo│ │qu│
+│.py   │ │rel-│ │ima-│ │loa-│ │_u-│ │al│
+│NMEABu│ │ator│ │tor │ │der │ │til│ │it│
+│ffer  │ │.py │ │.py │ │.py │ │s  │ │y.│
+│deque  │ │TER-│ │Velo│ │DEM │ │.py│ │py│
+│adapt. │ │COM │ │cit │ │Lo- │ │   │ │  │
+│dist.  │ │Cor-│ │yEs│ │ader│ │   │ │  │
+│       │ │r-  │ │tim-│ │Co- │ │   │ │  │
+│       │ │ela-│ │ator│ │ord │ │   │ │  │
+│       │ │tor │ │Nav-│ │Tra-│ │   │ │  │
+│       │ │Hyp-│ │iga-│ │nsf │ │   │ │  │
+│       │ │oth-│ │tion│ │DEM-│ │   │ │  │
+│       │ │esis│ │Est-│ │Int-│ │   │ │  │
+│       │ │Sea-│ │ima-│ │erp-│ │   │ │  │
+│       │ │rch │ │te  │ │ola-│ │   │ │  │
+│       │ │Cor-│ │   │ │tor │ │   │ │  │
+│       │ │rel-│ │   │ │    │ │   │ │  │
+│       │ │atio│ │   │ │    │ │   │ │  │
+│       │ │n Me│ │   │ │    │ │   │ │  │
+│       │ │tric│ │   │ │    │ │   │ │  │
+│       │ │s   │ │   │ │    │ │   │ │  │
+└───────┘ └────┘ └───┘ └────┘ └───┘ └──┘
+    ┌───────┐ ┌────────┐ ┌──────────┐
+    │eskf  │ │config  │ │nmea_    │
+    │.py   │ │ validate│ │parser   │
+    │State │ │+ merger│ │.py      │
+    │Error │ │        │ │pynmea2  │
+    │Kalman│ │        │ │wrapper  │
+    │Filter│ │        │ │         │
+    └──────┘ └────────┘ └─────────┘
+```
+
+CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `analyze`) is a separate entry point — utilities that don't need the simulation UI.
 ```
 
 ## Модули
@@ -65,16 +69,9 @@
 | **quality** | `quality.py` | `_assess()` (private) | Классификация good/marginal/poor + confidence. |
 | **eskf** | `eskf.py` | `ErrorStateKalmanFilter` | 6D-фильтр. solve vs inv. Degree bug fixed. |
 | **pipeline** | `pipeline.py` | `NavigationPipeline` | Оркестратор: буфер→корреляция→оценка→dead reckoning→ESKF. |
-| **viz/template** | `viz/template.py` | `HTML_TEMPLATE` | HTML-шаблон с тёмной темой (GitHub Dark), 5 карточек, табы Synthetic/Dramatic, адаптивная вёрстка. |
-| **viz/utils** | `viz/utils.py` | `TEMPLATE`, `save_html()` (одиночный Figure), `save_dashboard()` (список chart-ов), `get_grid_or_fallback()`, константы стилей | Общие утилиты и функции сохранения HTML. |
-| **viz/dashboard** | `viz/dashboard.py` | `navigation_dashboard(data)` → `go.Figure`, `unified_dashboard(syn, dram)` → `list[dict]` | Генерация дашбордов. `navigation_dashboard` — для одного DEM (старый формат). `unified_dashboard` — для сравнения DEM: возвращает список из 5 chart-словарей (terrain, profile, timeline, error, heatmap). |
-| **viz/components** | `viz/components.py` | `terrain_traces()`, `profile_traces()`, `timeline_traces()`, `error_traces()`, `correlation_heatmap_trace()`, `drift_traces()`, `quality_pie()` | Фабрики Plotly trace-ов для каждого типа графика. Используются обоими дашбордами. |
-| **viz/data_model** | `viz/data_model.py` | `DashboardData`, `TerrainData`, `TrajectoryData`, `EstimateData`, `CorrData`, `ProfileData`, `ErrorData`, `build_dashboard_data()` | Dataclass-ы для передачи данных в визуализацию. |
-| **viz/trajectory** | `viz/trajectory.py` | `trajectory_map()` | 2D карта истинного vs оценённого трека (одиночный Figure). |
-| **viz/correlation** | `viz/correlation.py` | `correlation_heatmap()` | Тепловая карта coarse search (одиночный Figure). |
-| **viz/profile** | `viz/profile.py` | `profile_comparison()` | Сравнение измеренного vs эталонного профиля (одиночный Figure). |
+| **viz/mission** | `viz/mission.py` | `mission_viewer()` | 3-панельный HTML-вьювер для pre-flight mission package: карта, профиль информативности, fingerprint-матрица. |
 | **data_generator** | `data_generator.py` | `DataGenerator` | Симулирует полёт: NMEA строки с шумом. |
-| **main** | `main.py` | CLI (click) | Точка входа: `run`, `download-dem`, `generate-dem`, `analyze`. |
+| **cli** | `cli.py` | CLI (click) | Точка входа: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `analyze`. |
 | **simulation_ui** | `simulation_ui/main.py` | FastAPI SSE endpoint | Сервер для интерактивной симуляции TERCOM в реальном времени. Endpoint: `GET /api/simulate/{id}` → SSE stream из 14 шагов. |
 | **simulation_ui/runner** | `simulation_ui/runner.py` | `SimulationRunner` | Оркестратор: загружает DEM, гоняет pipeline, yield-ит 14 StepData-словарей. Каждый шаг содержит `{id, number, phase, title, svg, metrics, explanation}`. |
 | **simulation_ui/svg_generator** | `simulation_ui/svg_generator.py` | `svg_dem()`, `svg_nmea()`, `svg_buffer()`, `svg_profile()`, `svg_heatmap()`, `svg_ncc_bar()`, `svg_lag()`, `svg_trajectory()`, `svg_eskf_error()`, `svg_quality()`, `svg_result()`, `svg_corridor()`, `svg_fingerprints()` | Генерация динамических SVG из реальных данных pipeline-прогона. Bootstrap dark theme цвета, 500px viewBox. |
@@ -88,9 +85,6 @@
 - **Coarse-to-fine**: 10° coarse → 0.5° fine вокруг top-5. Margin = 6°.
 - **DEM тюнинг**: synthetic σ=95м → dramatic σ=687м для наглядных демок.
 - **Degree bug фикс**: ESKF `update_position` больше не делает `np.degrees()` на уже градусах.
-- **5 отдельных go.Figure вместо make_subplots** в `unified_dashboard()`. Каждый график — самостоятельный Figure с трейсами обоих DEM. Это позволяет рендерить их в отдельных HTML-карточках.
-- **save_html()** для одиночных Figure (старый формат). **save_dashboard()** для списка chart-ов: использует HTML_TEMPLATE из `template.py`, сериализует каждый Figure в JSON, добавляет массивы видимости для табов.
-- **HTML-шаблон** (`template.py`): GitHub Dark тема, 5 карточек, каждая с заголовком, Plotly-графиком и подписью. Табы Synthetic/Dramatic переключают видимость трейсов через `Plotly.restyle()`. Описания вкладок (что за DEM, зачем нужен) показываются под табами.
 - **Подписи к графикам** с примерами соотношений: каждая подпись содержит ✅⚠️❌ блок с конкретными числами (корреляция >0.95 → надёжно, ошибка азимута >30° → сбой и т.д.), чтобы пользователь понимал, хорошо это или плохо.
 
 ## DEMs в `data/dem/`
@@ -103,8 +97,7 @@
 ## Производительность
 
 - 32 теста за ~0.3 с
-- `main.py run`: 231 estimate за ~13 с (~60 ms/search)
-- Цель RPi: <100 ms/search через numba JIT
+- Цель RPi: <100 ms/search через JIT
 - ESKF predict/update/reset: << 1 ms
 
 ## Соглашения
@@ -120,11 +113,9 @@
 
 ## Что ещё нужно
 
-1. README.md
-2. Docstrings на публичные функции/классы (большая работа, механическая)
-3. Реальный DEM Copernicus GLO-30 (скачивание с S3 падает)
-4. Numba JIT на hot path (для RPi)
-5. INS drift simulation в data_generator
+1. Docstrings на публичные функции/классы (большая работа, механическая)
+2. Реальный DEM Copernicus GLO-30 (скачивание с S3 падает)
+3. INS drift simulation в data_generator
 
 ## Ссылки
 

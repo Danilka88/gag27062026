@@ -17,7 +17,8 @@ from simulation_ui.svg_generator import (
     svg_dem, svg_nmea, svg_buffer, svg_profile,
     svg_heatmap, svg_ncc_bar, svg_lag, svg_trajectory,
     svg_eskf_error, svg_quality, svg_result, svg_corridor,
-    svg_fingerprints, svg_empty,
+    svg_fingerprints, svg_empty, svg_aggregated_profile,
+    svg_rolling_discrimination, svg_r_matrix,
 )
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -92,8 +93,8 @@ def _generate_true_trajectory(center_lat, center_lon, params, n_points):
     lats, lons = [], []
     for i in range(n_points):
         d = i * params.speed_ms * params.duration_s / max(n_points - 1, 1)
-        dlat = d * math.cos(params.azimuth_rad) / 6371000
-        dlon = d * math.sin(params.azimuth_rad) / (6371000 * cos_clat)
+        dlat = d * math.cos(params.azimuth_rad) / EARTH_RADIUS
+        dlon = d * math.sin(params.azimuth_rad) / (EARTH_RADIUS * cos_clat)
         lats.append(center_lat + math.degrees(dlat))
         lons.append(center_lon + math.degrees(dlon))
     return lats, lons
@@ -151,8 +152,8 @@ class SimulationRunner:
         for i in range(n_route):
             frac = i / max(n_route - 1, 1)
             d = frac * total_dist
-            dlat = d * math.cos(az_rad) / 6371000
-            dlon = d * math.sin(az_rad) / (6371000 * cos_clat)
+            dlat = d * math.cos(az_rad) / EARTH_RADIUS
+            dlon = d * math.sin(az_rad) / (EARTH_RADIUS * cos_clat)
             route_lats.append(center_lat + math.degrees(dlat))
             route_lons.append(center_lon + math.degrees(dlon))
 
@@ -319,6 +320,52 @@ class SimulationRunner:
             "corr_peak": f"{float(np.max(np.abs(corr_full))):.4f}",
         })
 
+        all_profiles = [profile.copy()]
+        agg_window = cfg.window_size
+        for i in range(1, 5):
+            start_idx = i * agg_window // 5
+            end_idx = min(start_idx + agg_window, len(all_readings))
+            if end_idx - start_idx >= 5:
+                wr = all_readings[start_idx:end_idx]
+                p = extract_terrain_profile(wr, cfg.baro_altitude)
+                all_profiles.append(p)
+        min_len = min(len(p) for p in all_profiles) if all_profiles else 0
+        if min_len > 0 and len(all_profiles) > 1:
+            all_profiles = [p[:min_len] for p in all_profiles]
+            aggregated = np.mean(all_profiles, axis=0)
+        else:
+            aggregated = profile.copy()
+
+        yield _make_step(10, svg_aggregated_profile(all_profiles[:min(5, len(all_profiles))], aggregated), {
+            "n_windows_aggregated": len(all_profiles),
+            "aggregated_std": f"{float(np.std(aggregated)):.1f}",
+            "stability_gain": f"{float(np.std(profile) / np.std(aggregated)):.2f}x",
+        })
+
+        if len(all_profiles) >= 2:
+            rolling_corr = float(np.corrcoef(all_profiles[0], all_profiles[-1])[0, 1]) if min_len > 1 else 0.0
+            rolling_corr = 1.0 if np.isnan(rolling_corr) else rolling_corr
+        else:
+            rolling_corr = 0.0
+
+        yield _make_step(11, svg_rolling_discrimination(
+            all_profiles[-1] if all_profiles else profile,
+            all_profiles[0] if all_profiles else profile,
+            rolling_corr,
+        ), {
+            "rolling_correlation": f"{rolling_corr:.3f}",
+            "consistency": "high" if rolling_corr > 0.9 else "medium" if rolling_corr > 0.7 else "low",
+            "fallback_predicted": "no" if rolling_corr > 0.7 else "yes",
+        })
+
+        r_scale = 1.0 if best_fine and best_fine.correlation > 0.8 else 5.0 if best_fine and best_fine.correlation < 0.5 else 3.0
+
+        yield _make_step(12, svg_r_matrix(100.0, r_scale), {
+            "r_scale": f"{r_scale:.1f}x",
+            "adaptive_response": "ignored" if r_scale > 3 else "applied",
+            "trust_level": "high" if r_scale < 2 else "low",
+        })
+
         pipeline = NavigationPipeline(dem, cfg)
         pipeline.initialize(center_lat, center_lon)
         estimates = []
@@ -330,22 +377,22 @@ class SimulationRunner:
         true_lats, true_lons = _generate_true_trajectory(center_lat, center_lon, params, len(nmea_lines))
 
         if len(estimates) < 2:
-            yield _make_step(10, svg_empty("Нет данных — TERCOM не нашёл совпадение"), {
+            yield _make_step(13, svg_empty("Нет данных — TERCOM не нашёл совпадение"), {
                 "n_estimates": 0,
                 "true_azimuth": cfg.default_azimuth,
                 "true_speed": cfg.default_speed,
                 "n_estimates_total": 0,
             })
-            yield _make_step(11, svg_empty("Нет данных — TERCOM не нашёл совпадение"), {
+            yield _make_step(14, svg_empty("Нет данных — TERCOM не нашёл совпадение"), {
                 "kalman_enabled": cfg.kalman_enabled,
                 "mean_error_m": "N/A",
                 "total_estimates": 0,
             })
-            yield _make_step(12, svg_empty("Нет данных — TERCOM не нашёт совпадение"), {
+            yield _make_step(15, svg_empty("Нет данных — TERCOM не нашёл совпадение"), {
                 "quality": "unknown",
                 "confidence": "N/A",
             })
-            yield _make_step(13, svg_result([], cfg.default_azimuth, cfg.default_speed), {
+            yield _make_step(16, svg_result([], cfg.default_azimuth, cfg.default_speed), {
                 "total_estimates": 0,
                 "true_azimuth": cfg.default_azimuth,
                 "true_speed": cfg.default_speed,
@@ -357,27 +404,27 @@ class SimulationRunner:
         filt_lats = [e.filtered_lat for e in estimates if e.filtered_lat is not None]
         filt_lons = [e.filtered_lon for e in estimates if e.filtered_lon is not None]
 
-        yield _make_step(10, svg_trajectory(true_lats, true_lons, est_lats, est_lons, filt_lats, filt_lons), {
+        yield _make_step(13, svg_trajectory(true_lats, true_lons, est_lats, est_lons, filt_lats, filt_lons), {
             "n_estimates": len(estimates),
             "true_azimuth": cfg.default_azimuth,
             "true_speed": cfg.default_speed,
             "n_estimates_total": len(estimates),
         })
 
-        kf_errors = []
+        position_drift = []
         for i in range(1, min(len(estimates), 30)):
             prev = estimates[i - 1]
             curr = estimates[i]
             dlat = EARTH_RADIUS * math.radians(curr.position_lat - prev.position_lat)
             dlon = EARTH_RADIUS * math.radians(curr.position_lon - prev.position_lon)
             de = math.sqrt(dlat**2 + dlon**2)
-            kf_errors.append(float(de))
-        if len(kf_errors) < 5:
-            kf_errors = [0.001 + 0.0001 * j for j in range(10)]
+            position_drift.append(float(de))
+        if len(position_drift) < 5:
+            position_drift = [0.001 + 0.0001 * j for j in range(10)]
 
-        yield _make_step(11, svg_eskf_error(kf_errors, "ESKF — сходимость ошибки позиции"), {
+        yield _make_step(14, svg_eskf_error(position_drift, "Дрейф позиции между оценками TERCOM"), {
             "kalman_enabled": cfg.kalman_enabled,
-            "mean_error_m": f"{float(np.mean(kf_errors)):.1f}",
+            "mean_drift_m": f"{float(np.mean(position_drift)):.1f}",
             "total_estimates": len(estimates),
         })
 
@@ -387,14 +434,14 @@ class SimulationRunner:
         else:
             qual = {"quality": "poor", "confidence": 0.0, "peak_sharpness": 0.0, "discrimination_ratio": 0.0}
 
-        yield _make_step(12, svg_quality(qual), {
+        yield _make_step(15, svg_quality(qual), {
             "quality": qual.get("quality", "unknown"),
             "confidence": f"{qual.get('confidence', 0):.3f}",
             "peak_sharpness": f"{qual.get('peak_sharpness', 0):.2f}",
             "discrimination_ratio": f"{qual.get('discrimination_ratio', 0):.2f}",
         })
 
-        yield _make_step(13, svg_result(estimates, cfg.default_azimuth, cfg.default_speed), {
+        yield _make_step(16, svg_result(estimates, cfg.default_azimuth, cfg.default_speed), {
             "total_estimates": len(estimates),
             "true_azimuth": cfg.default_azimuth,
             "true_speed": cfg.default_speed,

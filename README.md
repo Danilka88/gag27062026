@@ -14,26 +14,20 @@ false TERCOM matches, and packages the data for onboard use.
 
 ## Quick Start
 
+Launch the interactive TERCOM simulation:
+
 ```bash
 pip install -e .
-gagarin run
+uvicorn simulation_ui.main:app
 ```
 
-Opens `data/output/dashboard.html` (interactive Plotly dashboard) and
-`data/output/estimates.json` after processing a simulated 300‑second flight.
-
-For a side‑by‑side comparison of smooth vs. rugged DEMs:
-
-```bash
-gagarin run --compare
-```
+Opens a real‑time step‑by‑step simulation of the full TERCOM pipeline
+(DEM loading → NMEA parsing → correlation → ESKF → result).
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `gagarin run` | Full pipeline: simulate flight → correlate → visualize |
-| `gagarin run --compare` | Run on both synthetic and dramatic DEMs side‑by‑side |
 | `gagarin prepare-route` | Pre‑flight: evaluate terrain along waypoints, build mission package |
 | `gagarin viz-mission` | Generate interactive mission viewer HTML from a mission package |
 | `gagarin generate-dem` | Generate a synthetic DEM (400×400, procedural volcanoes + ridges) |
@@ -71,16 +65,19 @@ terrain informativeness profile along the route, and fingerprint NCC matrix
 
 | Document | Contents |
 |---|---|
-| `HOW_IT_WORKS.md` | Component walkthrough: physics, math, startup behaviour |
-| `HOW_IT_WORKS_KIDS.md` | Simplified (non‑technical) explanation |
 | `AGENTS.md` | Technical context for AI coding agents |
-| `DEVELOPMENT_PLAN.md` | Roadmap with 7 phases, known weaknesses, research directions |
 
 ## Project Structure
 
 ```
+simulation_ui/       Interactive TERCOM simulation server (FastAPI + SSE)
+  main.py            FastAPI app: GET /api/simulate/{id} → SSE stream (14 steps)
+  runner.py          SimulationRunner — orchestrates DEM + pipeline → StepData
+  svg_generator.py   13 SVG generators for real‑time step visualisation
+  texts.py           Explanations for all 14 pipeline steps
+  static/            SPA frontend (app.js + style.css)
 gagarin/
-  main.py            CLI (run, prepare-route, viz-mission, analyze, ...)
+  main.py            CLI (prepare-route, viz-mission, analyze, ...)
   config.py          All tunable parameters (window, steps, thresholds)
   nmea_parser.py     pynmea2 wrapper → NMEAReading dataclass
   buffer.py          NMEABuffer — sliding window with adaptive distance
@@ -95,20 +92,10 @@ gagarin/
                      (fingerprints, adaptive corridor, SQLite + GeoTIFF packaging)
   data_generator.py  Flight simulation → NMEA strings with noise
   profile.py         Baro/radar profile extraction and validation
-  viz/               Plotly HTML visualisations
-    __init__.py      Public API: heatmap, trajectory, profile, dashboard, mission
-    dashboard.py     navigation_dashboard (single DEM), unified_dashboard (comparison)
-    mission.py       mission_viewer — pre‑flight 3‑panel HTML
-    components.py    Shared trace factories (terrain, profile, timeline, error, heatmap, drift, pie)
-    data_model.py    DashboardData dataclass + build_dashboard_data factory
-    template.py      GitHub‑Dark HTML template with tabs
-    utils.py         save_html / save_dashboard / get_grid_or_fallback
-    trajectory.py    trajectory_map() — 2D true vs. estimated track
-    heatmap.py       correlation_heatmap() — coarse NCC matrix
-    profiles.py      profile_comparison() — observed vs. reference DEM profile
+  viz/mission.py     mission_viewer — pre‑flight 3‑panel HTML viewer
 data/
   dem/               GeoTIFF files (synthetic_kamchatka.tif, dramatic_kamchatka.tif)
-  output/            HTML dashboards, mission viewer, estimates.json
+  output/            Mission viewer HTML, estimates.json
 tests/               32 tests (config, geo_utils, eskf, nmea_parser, correlator, estimator)
 ```
 
@@ -118,7 +105,7 @@ tests/               32 tests (config, geo_utils, eskf, nmea_parser, correlator,
 - 231 estimates per 300 s flight in ~13 s real‑time (~60 ms/search)
 - ESKF predict/update/reset ≪ 1 ms
 - Pre‑flight: 6 waypoints → 122 fingerprint points in ~5 s
-- Target (RPi ARM64): <100 ms/search via numba JIT
+- Target (RPi ARM64): <100 ms/search via JIT
 
 ## DEMs
 

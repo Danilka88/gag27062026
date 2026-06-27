@@ -20,7 +20,6 @@ class Config:
     coarse_top_n: int = 5
 
     terrain_std_threshold: float = 3.0
-    confidence_threshold: float = 0.7
 
     dem_path: str = "data/dem"
     output_path: str = "data/output"

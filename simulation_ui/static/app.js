@@ -1,6 +1,6 @@
 const state = {
     steps: [],
-    placeholders: 14,
+    placeholders: 17,
     currentIndex: -1,
     isPlaying: false,
     isComplete: false,
@@ -15,7 +15,8 @@ const BASE_DELAY = 2000;
 const STEP_NAMES = [
     "Загрузка DEM", "Fingerprint-ы", "Коридор", "NMEA",
     "Буфер", "Профиль", "Coarse", "Fine",
-    "NCC", "Lag", "Траектория", "ESKF",
+    "NCC", "Lag", "Агрегирование", "Discrimination",
+    "R-матрица", "Траектория", "ESKF",
     "Качество", "Итог",
 ];
 
