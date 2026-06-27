@@ -456,10 +456,12 @@ class SimulationRunner:
         pipeline = NavigationPipeline(dem, cfg)
         pipeline.initialize(center_lat, center_lon)
         estimates = []
-        for line in nmea_lines:
+        estimate_indices = []
+        for idx, line in enumerate(nmea_lines):
             est = pipeline.feed_line(line.strip())
             if est is not None:
                 estimates.append(est)
+                estimate_indices.append(idx)
 
         true_lats, true_lons = _generate_true_trajectory(center_lat, center_lon, params, len(nmea_lines))
 
@@ -484,6 +486,7 @@ class SimulationRunner:
                 "true_azimuth": cfg.default_azimuth,
                 "true_speed": cfg.default_speed,
             })
+            yield _make_step(18, "", {"trajectory": None})
             return
 
         est_lats = [e.position_lat for e in estimates]
@@ -534,3 +537,31 @@ class SimulationRunner:
             "true_speed": cfg.default_speed,
             "n_estimates_total": len(estimates),
         })
+
+        est_elevations = []
+        for e in estimates:
+            try:
+                est_elevations.append(float(dem.elevation(e.position_lat, e.position_lon)))
+            except Exception:
+                est_elevations.append(0.0)
+
+        trajectory_data = {
+            "trajectory": {
+                "true_path": [[round(float(lat), 6), round(float(lon), 6)] for lat, lon in zip(true_lats, true_lons)],
+                "estimates": [
+                    {
+                        "lat": e.position_lat, "lon": e.position_lon,
+                        "correlation": e.correlation,
+                        "quality": e.quality.get("quality", "unknown") if e.quality else "unknown",
+                        "speed_ms": e.speed_ms, "azimuth_deg": e.azimuth_deg,
+                        "elevation": elev, "nmea_index": int(idx),
+                    }
+                    for e, elev, idx in zip(estimates, est_elevations, estimate_indices)
+                ],
+                "filtered_path": [[round(float(lat), 6), round(float(lon), 6)] for lat, lon in zip(filt_lats, filt_lons)],
+                "start": {"lat": true_lats[0], "lon": true_lons[0]},
+                "end": {"lat": true_lats[-1], "lon": true_lons[-1]},
+                "n_nmea": len(nmea_lines),
+            },
+        }
+        yield _make_step(18, "", trajectory_data)

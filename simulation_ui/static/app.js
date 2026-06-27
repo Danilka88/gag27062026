@@ -1,6 +1,6 @@
 const state = {
     steps: [],
-    placeholders: 18,
+    placeholders: 19,
     currentIndex: -1,
     isPlaying: false,
     isComplete: false,
@@ -10,6 +10,18 @@ const state = {
     eventSource: null,
 };
 
+const mapState = {
+    instance: null,
+    data: null,
+    animTimer: null,
+    animPos: 0,
+    animPlaying: false,
+    droneMarker: null,
+    activeTrail: null,
+    errorLines: null,
+    layers: {},
+};
+
 const SPEEDS = [1, 2, 5, 10];
 const BASE_DELAY = 2000;
 const STEP_NAMES = [
@@ -17,7 +29,7 @@ const STEP_NAMES = [
     "Буфер", "Профиль", "Coarse", "Fine",
     "NCC", "Lag", "Агрегирование", "Discrimination",
     "R-матрица", "Траектория", "ESKF",
-    "Качество", "Итог",
+    "Качество", "Итог", "Анализ ИИ", "Карта маршрута",
 ];
 
 async function loadScenarios() {
@@ -120,6 +132,7 @@ function startSimulation(scenarioId) {
 }
 
 function returnToLanding() {
+    cleanupMap();
     if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
     if (state.timer) { clearTimeout(state.timer); state.timer = null; }
     state.isPlaying = false;
@@ -185,6 +198,8 @@ function renderCurrentStep() {
     const step = state.steps[state.currentIndex];
     if (!step) return;
     const display = document.getElementById('step-display');
+    const traj = step.metrics && step.metrics.trajectory;
+
     display.innerHTML = `
         <div class="step-header phase-${step.phase}">
             <span class="step-phase-badge">${step.phase_label} · Шаг ${step.number}</span>
@@ -198,9 +213,19 @@ function renderCurrentStep() {
             <div class="label">🎯 Задача</div>
             ${step.task}
         </div>
+        ${traj ? `
+        <div id="trajectory-map" class="map-container"></div>
+        <div class="map-bottom-bar">
+            <input type="range" id="timeline-slider" min="0" max="100" value="0" class="timeline-slider">
+            <div class="map-info-row">
+                <button id="map-play-btn" class="btn-icon" style="width:auto;padding:0.25rem 0.75rem">▶ Играть</button>
+                <span id="map-pos-info" class="text-secondary-emphasis small ms-2">Точка 0/0</span>
+                <span id="map-params-info" class="text-light small ms-auto">—</span>
+            </div>
+        </div>` : `
         <div class="svg-container" id="svg-container">
             ${step.svg}
-        </div>
+        </div>`}
         <div class="step-explanation">${step.explanation}</div>
         <div class="why-grid">
             ${step.why.map(([icon, title, text]) => `
@@ -211,16 +236,28 @@ function renderCurrentStep() {
                 </div>
             `).join('')}
         </div>
+        ${step.metrics && !step.metrics.trajectory ? `
         <div class="metrics-grid">
-            ${Object.entries(step.metrics || {}).map(([k, v]) => `
+            ${Object.entries(step.metrics).filter(([k]) => k !== 'trajectory').map(([k, v]) => `
                 <div class="metric-card">
                     <div class="metric-value">${v}</div>
                     <div class="metric-label">${k.replace(/_/g, ' ')}</div>
                 </div>
             `).join('')}
-        </div>`;
-    const svgEl = document.getElementById('svg-container');
-    if (svgEl) svgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        </div>` : ''}`;
+
+    if (traj) {
+        if (traj && traj.true_path && traj.true_path.length > 0) {
+            initTrajectoryMap(traj);
+        } else {
+            document.getElementById('trajectory-map').innerHTML = '<div class="text-center py-5 text-secondary-emphasis">Нет данных траектории</div>';
+        }
+        const svgEl = document.getElementById('trajectory-map');
+        if (svgEl) svgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+        const svgEl = document.getElementById('svg-container');
+        if (svgEl) svgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     updateStepList();
     updateProgress();
     updateControls();
@@ -382,6 +419,220 @@ ${(result.suggestions || []).slice(0, 4).map((s, i) =>
     btn.disabled = false;
     btn.textContent = '🤖 Анализ ИИ агентов';
     document.getElementById('ai-section').style.display = 'none';
+}
+
+/* --- Trajectory Map (Leaflet) --- */
+
+function initTrajectoryMap(data) {
+    cleanupMap();
+    mapState.data = data;
+    mapState.animPos = 0;
+    mapState.animPlaying = false;
+
+    const center = data.true_path[Math.floor(data.true_path.length / 2)];
+    const map = L.map('trajectory-map', {
+        center: [center[0], center[1]],
+        zoom: 12,
+        zoomControl: true,
+        attributionControl: false,
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+    }).addTo(map);
+    mapState.instance = map;
+
+    const trueLatLngs = data.true_path.map(p => [p[0], p[1]]);
+    const estLatLngs = data.estimates.map(e => [e.lat, e.lon]);
+    const filtLatLngs = data.filtered_path.map(p => [p[0], p[1]]);
+
+    const fullTrail = L.polyline(trueLatLngs, {
+        color: '#75b798', weight: 2, opacity: 0.4, dashArray: '8 4',
+    }).addTo(map);
+    mapState.layers.fullTrail = fullTrail;
+
+    const activeLayer = L.layerGroup().addTo(map);
+    mapState.layers.activeLayer = activeLayer;
+
+    const estLayer = L.layerGroup().addTo(map);
+    mapState.layers.estLayer = estLayer;
+
+    data.estimates.forEach((e, i) => {
+        const color = e.quality === 'good' ? '#6ea8fe'
+            : e.quality === 'marginal' ? '#ffda6a' : '#ea868f';
+        const radius = Math.max(3, Math.min(10, e.correlation * 10));
+        const marker = L.circleMarker([e.lat, e.lon], {
+            radius, color, fillColor: color, fillOpacity: 0.7, weight: 1,
+        });
+        marker.bindPopup(`
+            <div class="popup-content">
+                <div class="popup-row"><span class="popup-label">Корреляция</span> <span class="popup-value">${e.correlation.toFixed(4)}</span></div>
+                <div class="popup-row"><span class="popup-label">Высота</span> <span class="popup-value">${e.elevation.toFixed(0)} м</span></div>
+                <div class="popup-row"><span class="popup-label">Скорость</span> <span class="popup-value">${e.speed_ms.toFixed(1)} м/с</span></div>
+                <div class="popup-row"><span class="popup-label">Азимут</span> <span class="popup-value">${e.azimuth_deg.toFixed(1)}°</span></div>
+                <div class="popup-row"><span class="popup-label">Качество</span> <span class="popup-value">${e.quality}</span></div>
+                <div class="popup-row"><span class="popup-label">NMEA #</span> <span class="popup-value">${e.nmea_index}</span></div>
+            </div>
+        `, { className: 'leaflet-popup-dark' });
+        marker.addTo(estLayer);
+    });
+
+    if (filtLatLngs.length > 1) {
+        const filtLine = L.polyline(filtLatLngs, {
+            color: '#b580d1', weight: 3, opacity: 0.8,
+        }).addTo(map);
+        mapState.layers.filtLine = filtLine;
+    }
+
+    const errorLines = L.layerGroup().addTo(map);
+    mapState.layers.errorLines = errorLines;
+
+    if (data.start) {
+        L.circleMarker([data.start.lat, data.start.lon], {
+            radius: 8, color: '#75b798', fillColor: '#75b798', fillOpacity: 0.9, weight: 2,
+        }).bindPopup('<div class="popup-content"><b>Старт</b></div>', { className: 'leaflet-popup-dark' }).addTo(map);
+    }
+    if (data.end) {
+        L.circleMarker([data.end.lat, data.end.lon], {
+            radius: 8, color: '#ea868f', fillColor: '#ea868f', fillOpacity: 0.9, weight: 2,
+        }).bindPopup('<div class="popup-content"><b>Финиш</b></div>', { className: 'leaflet-popup-dark' }).addTo(map);
+    }
+
+    const legend = L.control({ position: 'bottomleft' });
+    legend.onAdd = () => {
+        const div = L.DomUtil.create('div', 'map-legend');
+        div.innerHTML = `
+            <div class="legend-row"><span class="legend-line" style="border-color:#75b798"></span> Истинный путь</div>
+            <div class="legend-row"><span class="legend-dot" style="background:#6ea8fe"></span> Оценки TERCOM</div>
+            <div class="legend-row"><span class="legend-line" style="border-color:#b580d1"></span> ESKF filtered</div>
+            <div class="legend-row"><span class="legend-dot" style="background:#ffda6a"></span> Marginal</div>
+            <div class="legend-row"><span class="legend-dot" style="background:#ea868f"></span> Poor</div>`;
+        return div;
+    };
+    legend.addTo(map);
+
+    const slider = document.getElementById('timeline-slider');
+    slider.max = data.true_path.length - 1;
+    slider.value = 0;
+    slider.oninput = function () {
+        updateTrajectoryFrame(parseInt(this.value));
+    };
+
+    document.getElementById('map-play-btn').onclick = toggleMapAnimation;
+
+    map.fitBounds(fullTrail.getBounds().pad(0.15));
+    updateTrajectoryFrame(0);
+}
+
+function updateTrajectoryFrame(pos) {
+    const data = mapState.data;
+    if (!data) return;
+    const active = mapState.layers.activeLayer;
+    const errorLines = mapState.layers.errorLines;
+    active.clearLayers();
+    errorLines.clearLayers();
+
+    const trail = data.true_path.slice(0, pos + 1).map(p => [p[0], p[1]]);
+    if (trail.length > 1) {
+        L.polyline(trail, { color: '#75b798', weight: 3, opacity: 0.9 }).addTo(active);
+    }
+
+    const visibleEst = data.estimates.filter(e => e.nmea_index <= pos);
+    visibleEst.forEach(e => {
+        const color = e.quality === 'good' ? '#6ea8fe'
+            : e.quality === 'marginal' ? '#ffda6a' : '#ea868f';
+        const radius = Math.max(3, Math.min(10, e.correlation * 10));
+        L.circleMarker([e.lat, e.lon], {
+            radius, color, fillColor: color, fillOpacity: 0.9, weight: 1,
+        }).addTo(active);
+    });
+
+    data.estimates.forEach(e => {
+        if (e.nmea_index <= pos && pos < data.true_path.length) {
+            const truePt = data.true_path[e.nmea_index];
+            if (truePt) {
+                L.polyline([[truePt[0], truePt[1]], [e.lat, e.lon]], {
+                    color: '#ea868f', weight: 1, opacity: 0.4, dashArray: '4 4',
+                }).addTo(errorLines);
+            }
+        }
+    });
+
+    if (pos < data.true_path.length) {
+        const pt = data.true_path[pos];
+        if (pt) {
+            if (mapState.droneMarker) mapState.droneMarker.remove();
+            mapState.droneMarker = L.circleMarker([pt[0], pt[1]], {
+                radius: 6, color: '#fff', fillColor: '#6ea8fe', fillOpacity: 1, weight: 2,
+            }).addTo(active);
+        }
+    }
+
+    const nearEst = data.estimates.filter(e => e.nmea_index <= pos);
+    const lastEst = nearEst.length > 0 ? nearEst[nearEst.length - 1] : null;
+    const infoEl = document.getElementById('map-params-info');
+    if (lastEst) {
+        infoEl.innerHTML = `Корр: ${lastEst.correlation.toFixed(3)} | Ск: ${lastEst.speed_ms.toFixed(0)} м/с | Аз: ${lastEst.azimuth_deg.toFixed(0)}° | Выс: ${lastEst.elevation.toFixed(0)} м | Кач: ${lastEst.quality}`;
+    } else {
+        infoEl.textContent = '—';
+    }
+
+    const slider = document.getElementById('timeline-slider');
+    if (slider) slider.value = pos;
+
+    document.getElementById('map-pos-info').textContent = `Точка ${pos}/${data.true_path.length - 1}`;
+}
+
+function toggleMapAnimation() {
+    if (mapState.animPlaying) pauseMapAnimation();
+    else playMapAnimation();
+}
+
+function playMapAnimation() {
+    const data = mapState.data;
+    if (!data || data.true_path.length < 2) return;
+    if (mapState.animPos >= data.true_path.length - 1) {
+        mapState.animPos = 0;
+    }
+    mapState.animPlaying = true;
+    document.getElementById('map-play-btn').textContent = '⏸ Пауза';
+    stepMapAnimation();
+}
+
+function pauseMapAnimation() {
+    mapState.animPlaying = false;
+    if (mapState.animTimer) {
+        clearTimeout(mapState.animTimer);
+        mapState.animTimer = null;
+    }
+    document.getElementById('map-play-btn').textContent = '▶ Играть';
+}
+
+function stepMapAnimation() {
+    if (!mapState.animPlaying) return;
+    const data = mapState.data;
+    if (mapState.animPos >= data.true_path.length - 1) {
+        pauseMapAnimation();
+        document.getElementById('map-play-btn').textContent = '▶ Играть';
+        return;
+    }
+    mapState.animPos++;
+    updateTrajectoryFrame(mapState.animPos);
+    const speed = state.speed;
+    mapState.animTimer = setTimeout(stepMapAnimation, 200 / speed);
+}
+
+function cleanupMap() {
+    pauseMapAnimation();
+    if (mapState.instance) {
+        mapState.instance.remove();
+        mapState.instance = null;
+    }
+    if (mapState.droneMarker) {
+        mapState.droneMarker.remove();
+        mapState.droneMarker = null;
+    }
+    mapState.layers = {};
+    mapState.data = null;
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
