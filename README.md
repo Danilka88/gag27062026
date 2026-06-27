@@ -78,6 +78,59 @@
 6. Dead reckoning (движение по сфере) интегрирует скорость в положение.
 7. Error-State Kalman Filter (ESKF) сглаживает оценки и подавляет шум.
 
+### Position Recovery (потеря и восстановление)
+
+При полёте над неконтрастным рельефом (равнина, вода) TERCOM перестаёт находить
+достоверные совпадения — система переходит в режим **dead reckoning** по
+последнему известному азимуту и скорости.
+
+Алгоритм восстановления:
+
+1. **Детекция потери** — `LostRecoveryModule.detect_lost_segments()` анализирует
+   качество оценок pipeline: если `consecutive poor ≥ 5`, сегмент фиксируется.
+2. **Position Grid Search** — вокруг dead-reckoned центра строится сетка 7×7
+   гипотез (шаг ~150 м). Для каждой гипотезы извлекается reference profile из DEM
+   и вычисляется NCC. Ячейка с максимальной корреляцией даёт восстановленную позицию.
+3. **Confidence** — оценивается через sharpness пика относительно медианы карты
+   корреляций. Если confidence < 0.3, восстановление считается неудачным.
+
+### Route Replanning (перестроение маршрута)
+
+После успешного восстановления система строит новый маршрут:
+
+- **К финишу** — если оставшегося заряда батареи достаточно.
+- **Возврат на старт** — если до финиша не хватает, но до точки взлёта — да.
+- **Аварийная посадка** — если ни туда, ни обратно не долететь.
+
+Маршрут прокладывается по **loxodrome (constant bearing)** через
+`offset_coords_batch()` — кратчайший путь с постоянным курсом.
+
+### Battery Management (управление энергией)
+
+После восстановления система оценивает остаток батареи:
+
+- `remaining_s = flight_duration − elapsed_time − reserve (10%)`
+- `max_range_m = remaining_s × current_speed`
+- Сравнивается с дистанцией до финиша и до старта (`haversine_m`)
+
+Решение принимается автоматически:
+- `dist_to_finish ≤ max_range_m` → маршрут до финиша
+- `dist_to_start ≤ max_range_m` → возврат на старт
+- иначе → поиск зоны аварийной посадки
+
+### Landing Zone Detection (зона аварийной посадки)
+
+Если батареи не хватает ни до финиша, ни до старта, `LandingZoneFinder`
+сканирует DEM в радиусе 500 м вокруг восстановленной позиции:
+
+1. Скользящее окно (размер ~30 м) вычисляет стандартное отклонение высот.
+2. Участки с `std < 5 м` считаются ровными и пригодными для посадки.
+3. Из найденных выбирается ближайший к дрону.
+4. BFS-расширение определяет bounding box зоны.
+5. Результат: координаты зоны, ровность, площадь, полигон на карте.
+
+Если зона не найдена (или площадь < 400 м²), система возвращает `None`.
+
 ### coarse-to-fine search
 
 | Этап | Шаг азимута | Количество гипотез | Описание |
@@ -170,6 +223,9 @@ buffer correl estim  dem    geo   eskf qual
 | `eskf.py` | `ErrorStateKalmanFilter` — 6D фильтр (lat, lon, v_N, v_E, v_D, baro_bias). `solve` вместо `inv`. |
 | `pipeline.py` | `NavigationPipeline` — оркестратор: буфер → корреляция → оценка → dead reckoning → ESKF. |
 | `preprocess.py` | `TerrainAnalyzer`, `MissionPreprocessor` — предполётный анализ. |
+| `recovery.py` | `LostRecoveryModule` — детекция потери корреляции, Position Grid Search (7×7) для восстановления позиции. |
+| `replanning.py` | `RouteReplanner` — построение маршрутов (финиш / старт / зона посадки) по loxodrome. |
+| `landing.py` | `LandingZoneFinder` — поиск ровных участков на DEM (скользящее окно std, BFS bounding box). |
 | `data_generator.py` | Симуляция полёта: NMEA строки с шумом, случайные траектории. |
 | `profile.py` | Извлечение и валидация барометрических/радиолокационных профилей. |
 | `constants.py` | `EARTH_RADIUS`, `NEAR_ZERO`, `GRAVITY`. |
@@ -179,10 +235,10 @@ buffer correl estim  dem    geo   eskf qual
 | Модуль | Назначение |
 |--------|-----------|
 | `main.py` | FastAPI сервер: `GET /api/simulate/{id}` → SSE поток из 18 шагов. |
-| `runner.py` | `SimulationRunner` — загружает DEM, гоняет pipeline, выдаёт StepData словари. |
-| `svg_generator.py` | 13 SVG-генераторов: DEM, NMEA, буфер, профиль, тепловая карта, NCC bar, лаг, траектория, ESKF ошибка, качество, corridor, fingerprints. |
-| `texts.py` | Пояснения для каждого шага: заголовок, подзаголовок, explanation, task, why (3 карточки), tags. |
-| `static/` | SPA на чистом JS: SSE-клиент, step buffer, auto-play (×1–×10), пошаговый просмотр, AI-анализ. |
+| `runner.py` | `SimulationRunner` — загружает DEM, гоняет pipeline, выдача 26 StepData словарей. Включает recovery, battery check, landing zone search, route replanning. |
+| `svg_generator.py` | 16 SVG-генераторов: DEM, NMEA, буфер, профиль, тепловая карта, NCC bar, лаг, траектория, ESKF ошибка, качество, corridor, fingerprints, дрейф, heatmap recovery, позиция recovery, батарея, зона посадки, маршрут. |
+| `texts.py` | Пояснения для 26 шагов: заголовок, подзаголовок, explanation, task, why (3 карточки), tags. |
+| `static/` | SPA на чистом JS: SSE-клиент, step buffer, auto-play (×1–×10), пошаговый просмотр, AI-анализ, три вкладки (Pipeline / Recovery / Route). |
 
 ### Пакет `gagarin/viz/`
 
@@ -277,25 +333,17 @@ uv run uvicorn simulation_ui.main:app --reload
 Откройте браузер на `http://127.0.0.1:8000`. Доступно 10 сценариев
 с разными DEM (Камчатка, Кавказ, Крым, Урал, Алтай и др.).
 
-UI показывает 18 шагов TERCOM-конвейера в реальном времени:
-1. Fingerprints маршрута (карта информативности)
-2. Загрузка DEM
-3. Парсинг NMEA
-4. Буферизация
-5. Профиль рельефа
-6. Тепловая карта корреляций
-7. NCC bar (результаты coarse поиска)
-8. Cross-correlation lag
-9. Оценка скорости
-10. Dead reckoning
-11. ESKF коррекция
-12. Ошибка ESKF
-13. Качество оценки
-14. Траектория
-15. Corridor неопределённости
-16. Результат
-17. Сводка улучшений
-18. Финальная траектория
+UI показывает 26 шагов TERCOM-конвейера в реальном времени с тремя вкладками:
+
+**Pipeline (17 шагов):** DEM → Fingerprints → Коридор → NMEA → Буфер →
+Профиль → Coarse → Fine → NCC → Lag → Агрегирование → Discrimination →
+R-матрица → Траектория → ESKF → Качество → Итог
+
+**Recovery (6 шагов):** Анализ ИИ → Карта маршрута → Потеря позиции →
+Position Grid Search → Результат recovery → Перестроение → Батарея →
+Зона посадки → Финальный маршрут
+
+**Route (1 шаг):** Финальный маршрут с детальной информацией
 
 ### CLI
 
