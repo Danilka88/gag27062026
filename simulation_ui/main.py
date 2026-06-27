@@ -1,19 +1,15 @@
 import asyncio
 import json
 import os
-import sys
 import threading
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, PROJECT_ROOT)
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from sse_starlette.sse import EventSourceResponse
 
-from fastapi import FastAPI, HTTPException, Request  # noqa: E402
-from fastapi.responses import HTMLResponse  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-from sse_starlette.sse import EventSourceResponse  # noqa: E402
-
-from simulation_ui.runner import get_scenarios, SimulationRunner  # noqa: E402
-from simulation_ui.analyzer import analyze as ai_analyze  # noqa: E402
+from simulation_ui.runner import get_scenarios, SimulationRunner
+from simulation_ui.analyzer import analyze as ai_analyze
 
 app = FastAPI(title="Gagarin Simulation UI")
 

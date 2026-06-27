@@ -39,7 +39,8 @@ def peak_sharpness(match: MatchResult) -> float:
 def discrimination_ratio(match: MatchResult) -> float:
     n = len(match.reference_profile)
     aligned = np.abs(match.observed_profile - match.reference_profile)
-    misaligned = np.abs(match.observed_profile - np.roll(match.reference_profile, n // 4))
+    shift = max(1, n // 4)
+    misaligned = np.abs(match.observed_profile - np.roll(match.reference_profile, shift))
     sum_aligned = np.sum(aligned)
     sum_misaligned = np.sum(misaligned)
     if sum_aligned < 1e-12:

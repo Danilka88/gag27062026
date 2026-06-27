@@ -166,33 +166,23 @@ def get_scenarios() -> Dict[str, Dict[str, Any]]:
     return dict(sorted(result.items(), key=lambda x: x[1].get("name", "")))
 
 
-def _to_serializable(v):
-    if isinstance(v, (np.floating,)):
+def _serialize(v):
+    if isinstance(v, dict):
+        return {k: _serialize(v) for k, v in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_serialize(item) for item in v]
+    if isinstance(v, np.floating):
         return float(v)
-    if isinstance(v, (np.integer,)):
+    if isinstance(v, np.integer):
         return int(v)
     if isinstance(v, np.ndarray):
-        return v.tolist()
+        return _serialize(v.tolist())
     return v
-
-
-def _deep_serializable(d):
-    if isinstance(d, dict):
-        return {k: _deep_serializable(v) for k, v in d.items()}
-    if isinstance(d, (list, tuple)):
-        return [_deep_serializable(v) for v in d]
-    if isinstance(d, np.floating):
-        return float(d)
-    if isinstance(d, np.integer):
-        return int(d)
-    if isinstance(d, np.ndarray):
-        return d.tolist()
-    return d
 
 
 def _make_step(step_idx: int, svg: str, metrics: dict) -> Dict[str, Any]:
     t = STEP_TEXTS[step_idx]
-    safe_metrics = {k: _to_serializable(v) for k, v in metrics.items()}
+    safe_metrics = {k: _serialize(v) for k, v in metrics.items()}
     return {
         "id": t["id"],
         "number": t["number"],
@@ -294,22 +284,14 @@ class SimulationRunner:
         grad_map = analyzer.gradient_magnitude()
         std_vals, grad_vals = [], []
         for lat, lon in zip(route_lats, route_lons):
-            try:
-                ri = int((lat - bounds[1]) / (bounds[3] - bounds[1]) * (std_map.shape[0] - 1))
-                ci = int((lon - bounds[0]) / (bounds[2] - bounds[0]) * (std_map.shape[1] - 1))
-                ri = max(0, min(ri, std_map.shape[0] - 1))
-                ci = max(0, min(ci, std_map.shape[1] - 1))
-                std_vals.append(float(std_map[ri, ci]))
-            except Exception:
-                std_vals.append(0.0)
-            try:
-                ri = int((lat - bounds[1]) / (bounds[3] - bounds[1]) * (grad_map.shape[0] - 1))
-                ci = int((lon - bounds[0]) / (bounds[2] - bounds[0]) * (grad_map.shape[1] - 1))
-                ri = max(0, min(ri, grad_map.shape[0] - 1))
-                ci = max(0, min(ci, grad_map.shape[1] - 1))
-                grad_vals.append(float(grad_map[ri, ci]))
-            except Exception:
-                grad_vals.append(0.0)
+            def _sample(grid):
+                ri = int((lat - bounds[1]) / (bounds[3] - bounds[1]) * (grid.shape[0] - 1))
+                ci = int((lon - bounds[0]) / (bounds[2] - bounds[0]) * (grid.shape[1] - 1))
+                ri = max(0, min(ri, grid.shape[0] - 1))
+                ci = max(0, min(ci, grid.shape[1] - 1))
+                return float(grid[ri, ci])
+            std_vals.append(_sample(std_map))
+            grad_vals.append(_sample(grad_map))
 
         yield _make_step(1, svg_fingerprints(std_vals, grad_vals), {
             "mean_std": f"{float(np.mean(std_vals)):.1f}",
@@ -640,4 +622,4 @@ class SimulationRunner:
                 "buffer_window_size": cfg.window_size,
             },
         }
-        yield _make_step(18, "", _deep_serializable(trajectory_data))
+        yield _make_step(18, "", _serialize(trajectory_data))

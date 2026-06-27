@@ -45,11 +45,11 @@ class CorrelationMetrics:
 
     @staticmethod
     def compute_confidence(corr_profile: np.ndarray, roughness: float) -> float:
-        max_corr = float(np.max(np.abs(corr_profile)))
+        max_corr = float(np.max(corr_profile))
         if len(corr_profile) < 3 or max_corr < 0.01:
             return 0.0
-        sorted_vals = np.sort(np.abs(corr_profile))
-        median_corr = float(sorted_vals[len(sorted_vals) // 2])
+        abs_vals = np.abs(corr_profile)
+        median_corr = float(np.median(abs_vals))
         sharpness = (max_corr - median_corr) / (max_corr + 1e-12)
         terrain_factor = min(roughness / 20.0, 1.0)
         return float(np.clip(sharpness * terrain_factor, 0.0, 1.0))
@@ -113,7 +113,7 @@ class HypothesisSearch:
         speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], cfg.n_speed_hypotheses)
         hypotheses = self.search_grid(profile, center_lat, center_lon, self._cached_coarse_azimuths, speeds, cfg.terrain_std_threshold * 0.5)
         hypotheses.sort(key=lambda h: h.correlation, reverse=True)
-        return hypotheses[:10]
+        return hypotheses[:cfg.coarse_top_n * 2]
 
     def fine_search(
         self,
@@ -125,11 +125,15 @@ class HypothesisSearch:
         cfg = self.config
         fine_hypotheses = []
         for hyp in top_hypotheses:
-            fine_azs = np.arange(
-                max(0, hyp.azimuth_deg - cfg.fine_azimuth_margin),
-                min(360, hyp.azimuth_deg + cfg.fine_azimuth_margin + 1e-9),
-                cfg.fine_azimuth_step,
-            )
+            az_lo = (hyp.azimuth_deg - cfg.fine_azimuth_margin) % 360
+            az_hi = (hyp.azimuth_deg + cfg.fine_azimuth_margin) % 360
+            if az_lo < az_hi:
+                fine_azs = np.arange(az_lo, az_hi + 1e-9, cfg.fine_azimuth_step)
+            else:
+                fine_azs = np.concatenate([
+                    np.arange(az_lo, 360 - 1e-9, cfg.fine_azimuth_step),
+                    np.arange(0, az_hi + 1e-9, cfg.fine_azimuth_step),
+                ])
             n_speeds = max(5, cfg.n_speed_hypotheses // 3)
             fine_speeds = np.linspace(
                 max(cfg.speed_range_ms[0], hyp.speed_ms - cfg.fine_speed_margin),

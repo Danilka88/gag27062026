@@ -10,6 +10,7 @@ from gagarin.buffer import NMEABuffer
 from gagarin.quality import assess_match
 from gagarin.dem_loader import DEMLoader
 from gagarin.config import Config
+from gagarin.geo_utils import offset_degrees
 from gagarin.constants import EARTH_RADIUS
 
 
@@ -80,6 +81,8 @@ class NavigationPipeline:
             if self.kf:
                 self.kf.predict()
             self._dead_reckon_forward()
+            if self.kf:
+                self.kf.set_position(self.center_lat, self.center_lon)
             return None
 
         self.last_result = match
@@ -99,18 +102,11 @@ class NavigationPipeline:
     def _update_center(self, estimate: NavigationEstimate):
         az_rad = np.radians(estimate.azimuth_deg)
         speed = estimate.speed_ms
-        dt_center = 1.0 / self.config.nmea_freq_hz
-        cos_lat = np.cos(np.radians(estimate.position_lat))
-
-        dr_lat = speed * np.cos(az_rad) * dt_center / EARTH_RADIUS
-        dr_lon = speed * np.sin(az_rad) * dt_center / (EARTH_RADIUS * cos_lat)
-
-        lag_m = estimate.lag_distance_m
-        corr_lat = lag_m * np.cos(az_rad) / EARTH_RADIUS
-        corr_lon = lag_m * np.sin(az_rad) / (EARTH_RADIUS * cos_lat)
-
-        self.center_lat += np.degrees(dr_lat + corr_lat)
-        self.center_lon += np.degrees(dr_lon + corr_lon)
+        dt = 1.0 / self.config.nmea_freq_hz
+        dr_lat, dr_lon = offset_degrees(speed * dt, az_rad, estimate.position_lat)
+        lag_lat, lag_lon = offset_degrees(estimate.lag_distance_m, az_rad, estimate.position_lat)
+        self.center_lat += dr_lat + lag_lat
+        self.center_lon += dr_lon + lag_lon
 
     def _dead_reckon_forward(self):
         dt = 1.0 / self.config.nmea_freq_hz
@@ -120,11 +116,9 @@ class NavigationPipeline:
         else:
             az_rad = np.radians(self.config.default_azimuth)
             speed = self.config.default_speed
-        cos_lat = np.cos(np.radians(self.center_lat))
-        dlat = speed * np.cos(az_rad) * dt / EARTH_RADIUS
-        dlon = speed * np.sin(az_rad) * dt / (EARTH_RADIUS * cos_lat)
-        self.center_lat += np.degrees(dlat)
-        self.center_lon += np.degrees(dlon)
+        dlat, dlon = offset_degrees(speed * dt, az_rad, self.center_lat)
+        self.center_lat += dlat
+        self.center_lon += dlon
 
     def _apply_kalman(self, estimate: NavigationEstimate):
         if not self.kf:

@@ -59,8 +59,8 @@ class ErrorStateKalmanFilter:
         z = np.array([lat - pred_lat, lon - pred_lon])
 
         H = np.zeros((2, self.dim))
-        H[0, 0] = 1.0 / EARTH_RADIUS
-        H[1, 1] = 1.0 / (EARTH_RADIUS * cos_lat)
+        H[0, 0] = np.degrees(1.0 / EARTH_RADIUS)
+        H[1, 1] = np.degrees(1.0 / (EARTH_RADIUS * cos_lat))
 
         self._update(z, H, R if R is not None else self.R_pos)
 

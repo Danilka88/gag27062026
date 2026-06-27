@@ -26,9 +26,19 @@ def offset_coords_batch(
     if lats.shape != lons.shape or lats.shape != distances.shape:
         raise ValueError(
             f"Shape mismatch: lats={lats.shape}, lons={lons.shape}, "
-            f"distances={distances.shape}"  # noqa: E251
+            f"distances={distances.shape}"
         )
     cos_lat = np.cos(np.radians(center_lat))
     dlat = distances * math.cos(azimuth_rad) / EARTH_RADIUS
     dlon = distances * math.sin(azimuth_rad) / (EARTH_RADIUS * cos_lat)
     return lats + np.degrees(dlat), lons + np.degrees(dlon)
+
+
+def offset_degrees(
+    distance_m: float,
+    azimuth_rad: float,
+    lat: float,
+) -> Tuple[float, float]:
+    dlat = distance_m * math.cos(azimuth_rad) / EARTH_RADIUS
+    dlon = distance_m * math.sin(azimuth_rad) / (EARTH_RADIUS * math.cos(math.radians(lat)))
+    return math.degrees(dlat), math.degrees(dlon)
