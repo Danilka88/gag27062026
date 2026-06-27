@@ -471,8 +471,8 @@ def svg_quality(quality: dict) -> str:
         tx = 250 + 75 * math.cos(rad)
         ty = 100 + 75 * math.sin(rad)
         parts.append(f'<text x="{tx:.1f}" y="{ty + 3:.1f}" fill="#adb5bd" font-size="8" text-anchor="middle" font-family="monospace">{pct}%</text>')
-    parts.append(f'<text x="100" y="175" fill="#adb5bd" font-size="9" font-family="monospace">peak_sharpness: {sharpness:.2f}</text>')
-    parts.append(f'<text x="280" y="175" fill="#adb5bd" font-size="9" font-family="monospace">disc_ratio: {disc_ratio:.2f}</text>')
+    parts.append(f'<text x="100" y="175" fill="#adb5bd" font-size="9" font-family="monospace">острота пика: {sharpness:.2f}</text>')
+    parts.append(f'<text x="280" y="175" fill="#adb5bd" font-size="9" font-family="monospace">коэф. дискриминации: {disc_ratio:.2f}</text>')
     return _svg_wrap("".join(parts), 200)
 
 
@@ -522,13 +522,13 @@ def svg_result(estimates: list, true_az: float, true_sp: float) -> str:
     parts.append(svg_result_card("Ошибка скорости (м/с)", f"{sp_err:.1f}", 145, 100, sp_color))
     parts.append('<rect x="265" y="100" width="110" height="50" rx="6" fill="#2b3035" stroke="#495057" stroke-width="1"/>')
     parts.append(f'<text x="320" y="122" fill="#75b798" font-size="16" text-anchor="middle" font-weight="bold" font-family="monospace">{good}</text>')
-    parts.append('<text x="320" y="140" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">Good</text>')
+    parts.append('<text x="320" y="140" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">Хорошо</text>')
     parts.append('<rect x="25" y="165" width="12" height="12" fill="#75b798" rx="2"/>')
-    parts.append(f'<text x="42" y="175" fill="#75b798" font-size="10" font-family="monospace">{good} good</text>')
+    parts.append(f'<text x="42" y="175" fill="#75b798" font-size="10" font-family="monospace">{good} хороших</text>')
     parts.append('<rect x="125" y="165" width="12" height="12" fill="#ffda6a" rx="2"/>')
-    parts.append(f'<text x="142" y="175" fill="#ffda6a" font-size="10" font-family="monospace">{marginal} marginal</text>')
+    parts.append(f'<text x="142" y="175" fill="#ffda6a" font-size="10" font-family="monospace">{marginal} пограничных</text>')
     parts.append('<rect x="250" y="165" width="12" height="12" fill="#ea868f" rx="2"/>')
-    parts.append(f'<text x="267" y="175" fill="#ea868f" font-size="10" font-family="monospace">{poor} poor</text>')
+    parts.append(f'<text x="267" y="175" fill="#ea868f" font-size="10" font-family="monospace">{poor} плохих</text>')
     if avg_corr > 0.9:
         expl = "Корреляция > 0.9 — оценка надёжна"
     elif avg_corr > 0.7:
@@ -583,8 +583,8 @@ def svg_fingerprints(std_values: List[float], grad_values: List[float]) -> str:
         parts.append(f'<rect x="{30 + i*bar_w:.1f}" y="{20 + ph - sh:.1f}" width="{bar_w*0.4:.2f}" height="{sh:.1f}" fill="#6ea8fe" rx="1"/>')
         gh = max((grad_values[i] - grad_min) / grad_rng * ph * 0.8, 2)
         parts.append(f'<rect x="{30 + i*bar_w + bar_w*0.45:.1f}" y="{20 + ph - gh:.1f}" width="{bar_w*0.4:.2f}" height="{gh:.1f}" fill="#75b798" rx="1"/>')
-    parts.append('<text x="30" y="216" fill="#6ea8fe" font-size="9" font-family="monospace">■ std_elevation (м)</text>')
-    parts.append('<text x="175" y="216" fill="#75b798" font-size="9" font-family="monospace">■ gradient</text>')
+    parts.append('<text x="30" y="216" fill="#6ea8fe" font-size="9" font-family="monospace">■ СКО высот (м)</text>')
+    parts.append('<text x="175" y="216" fill="#75b798" font-size="9" font-family="monospace">■ градиент</text>')
     parts.append('<text x="250" y="235" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">точки маршрута</text>')
     return _svg_wrap("".join(parts), 240)
 
@@ -628,7 +628,7 @@ def svg_aggregated_profile(profiles: List[np.ndarray], aggregated: np.ndarray) -
 
 def svg_rolling_discrimination(current: np.ndarray, previous: np.ndarray, corr: float) -> str:
     if len(current) < 2 or len(previous) < 2:
-        return svg_empty("Недостаточно данных для rolling discrimination")
+        return svg_empty("Недостаточно данных для скользящей дискриминации")
     pw, ph = 440, 150
     mn = min(len(current), len(previous))
     vmin = min(float(np.min(current[:mn])), float(np.min(previous[:mn]))) - 10
@@ -636,7 +636,7 @@ def svg_rolling_discrimination(current: np.ndarray, previous: np.ndarray, corr: 
     if vmax <= vmin:
         vmax = vmin + 100
     parts = []
-    parts.append('<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Rolling Discrimination — сравнение профилей</text>')
+    parts.append('<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Скользящая дискриминация — сравнение профилей</text>')
     parts.append(f'<text x="250" y="32" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">correlation: {corr:.3f}</text>')
     pts_c, pts_p = [], []
     for i in range(mn):
@@ -652,7 +652,7 @@ def svg_rolling_discrimination(current: np.ndarray, previous: np.ndarray, corr: 
     parts.append('<line x1="310" y1="174" x2="330" y2="174" stroke="#75b798" stroke-width="1.5" stroke-dasharray="4,3"/>')
     parts.append('<text x="335" y="178" fill="#75b798" font-size="9" font-family="monospace">предыдущий</text>')
     status = "good" if corr > 0.95 else "marginal" if corr > 0.8 else "poor"
-    parts.append(f'<text x="250" y="230" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">status: {status}</text>')
+    parts.append(f'<text x="250" y="230" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">статус: {status}</text>')
     return _svg_wrap("".join(parts), 250)
 
 

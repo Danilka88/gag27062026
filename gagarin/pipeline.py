@@ -46,7 +46,7 @@ class NavigationPipeline:
         b = self.dem.bounds
         if not (b[1] <= lat <= b[3] and b[0] <= lon <= b[2]):
             raise ValueError(
-                f"Start position ({lat:.4f}, {lon:.4f}) is outside DEM bounds "
+                f"Стартовая позиция ({lat:.4f}, {lon:.4f}) за пределами DEM "
                 f"({b[1]:.4f}–{b[3]:.4f} lat, {b[0]:.4f}–{b[2]:.4f} lon)"
             )
         self.center_lat = lat
@@ -161,8 +161,8 @@ class NavigationPipeline:
                 result = self.feed_line(line.strip())
                 if result is not None:
                     print(
-                        f"[NAV] az={result.azimuth_deg:.1f}° "
-                        f"v={result.speed_ms:.1f} m/s "
+                        f"[НАВ] az={result.azimuth_deg:.1f}° "
+                        f"v={result.speed_ms:.1f} м/с "
                         f"conf={result.confidence:.2f} "
                         f"pos=({result.position_lat:.5f}, {result.position_lon:.5f})"
                     )

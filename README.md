@@ -30,7 +30,8 @@ Opens a real‑time step‑by‑step simulation of the full TERCOM pipeline
 |---|---|
 | `gagarin prepare-route` | Pre‑flight: evaluate terrain along waypoints, build mission package |
 | `gagarin viz-mission` | Generate interactive mission viewer HTML from a mission package |
-| `gagarin generate-dem` | Generate a synthetic DEM (400×400, procedural volcanoes + ridges) |
+| `gagarin generate-dem` | Generate a synthetic DEM (400×400, procedural terrain) |
+| `gagarin generate-all` | Generate all 10 scenario DEMs at once |
 | `gagarin download-dem` | Download Copernicus GLO‑30 tiles for a region |
 | `gagarin analyze NMEA_FILE` | Process a pre‑recorded NMEA log file (offline or real‑time) |
 
@@ -94,14 +95,14 @@ gagarin/
   profile.py         Baro/radar profile extraction and validation
   viz/mission.py     mission_viewer — pre‑flight 3‑panel HTML viewer
 data/
-  dem/               GeoTIFF files (synthetic_kamchatka.tif, dramatic_kamchatka.tif)
+  dem/               10 GeoTIFF files (synthetic_kamchatka.tif, caucasus.tif, …)
   output/            Mission viewer HTML, estimates.json
-tests/               32 tests (config, geo_utils, eskf, nmea_parser, correlator, estimator)
+tests/               40 tests (config, geo_utils, eskf, nmea_parser, correlator, estimator)
 ```
 
 ## Performance
 
-- 32 tests in ~0.3 s
+- 40 tests in ~0.3 s
 - 231 estimates per 300 s flight in ~13 s real‑time (~60 ms/search)
 - ESKF predict/update/reset ≪ 1 ms
 - Pre‑flight: 6 waypoints → 122 fingerprint points in ~5 s
@@ -111,10 +112,18 @@ tests/               32 tests (config, geo_utils, eskf, nmea_parser, correlator,
 
 | DEM | Size | Elevation | Std | Description |
 |-----|------|-----------|-----|-------------|
-| `synthetic_kamchatka.tif` | 400×400 | 101–600 m | 95 m | Smooth, for development |
-| `dramatic_kamchatka.tif` | 400×400 | 10–3489 m | 687 m | 6 volcanoes + ridges + canyons |
+| `synthetic_kamchatka.tif` | 400×400 | 67–547 m | 99 m | Smooth, for development |
+| `dramatic_kamchatka.tif` | 400×400 | 1–3489 m | 688 m | 6 volcanoes + ridges + canyons |
+| `caucasus.tif` | 400×400 | 1–4114 m | 953 m | High peaks, deep gorges |
+| `ural.tif` | 400×400 | 87–1600 m | 495 m | Gentle mountain range |
+| `altai.tif` | 400×400 | 103–3671 m | 817 m | Plateau + peaks |
+| `crimea.tif` | 400×400 | 1–1192 m | 326 m | Ridge + sea level |
+| `siberia.tif` | 400×400 | 30–86 m | 17 m | Flat plain |
+| `sakhalin.tif` | 400×400 | 1–900 m | 358 m | Island + hills |
+| `karelia.tif` | 400×400 | 28–391 m | 85 m | Hills + lakes |
+| `primorye.tif` | 400×400 | 1–887 m | 222 m | Coastal hills |
 
-Both generated with `gagarin generate-dem`.
+All generated with `gagarin generate-all`.
 
 ## Approach
 

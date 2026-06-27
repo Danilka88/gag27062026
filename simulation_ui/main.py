@@ -29,7 +29,7 @@ async def index():
     if os.path.exists(index_path):
         with open(index_path, encoding="utf-8") as f:
             return HTMLResponse(f.read())
-    return HTMLResponse("<h1>index.html not found</h1>")
+    return HTMLResponse("<h1>index.html не найден</h1>")
 
 
 @app.get("/api/scenarios")
@@ -41,9 +41,9 @@ async def api_scenarios():
 async def api_simulate(scenario_id: str):
     scenarios = get_scenarios()
     if scenario_id not in scenarios:
-        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Сценарий '{scenario_id}' не найден")
     if not scenarios[scenario_id].get("exists", False):
-        raise HTTPException(status_code=404, detail=f"DEM file for '{scenario_id}' not found")
+        raise HTTPException(status_code=404, detail=f"DEM-файл для '{scenario_id}' не найден")
 
     async def event_generator():
         queue = asyncio.Queue()
