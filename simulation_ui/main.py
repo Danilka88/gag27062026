@@ -7,12 +7,13 @@ import threading
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.responses import HTMLResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from sse_starlette.sse import EventSourceResponse  # noqa: E402
 
 from simulation_ui.runner import get_scenarios, SimulationRunner  # noqa: E402
+from simulation_ui.analyzer import analyze as ai_analyze  # noqa: E402
 
 app = FastAPI(title="Gagarin Simulation UI")
 
@@ -35,6 +36,16 @@ async def index():
 @app.get("/api/scenarios")
 async def api_scenarios():
     return get_scenarios()
+
+
+@app.post("/api/analyze/{scenario_id}")
+async def api_analyze(scenario_id: str, request: Request):
+    body = await request.json()
+    steps = body.get("steps", [])
+    if not steps:
+        raise HTTPException(status_code=400, detail="Нет данных шагов для анализа")
+    result = await ai_analyze(steps)
+    return result
 
 
 @app.get("/api/simulate/{scenario_id}")

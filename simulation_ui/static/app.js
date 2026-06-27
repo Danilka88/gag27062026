@@ -1,6 +1,6 @@
 const state = {
     steps: [],
-    placeholders: 17,
+    placeholders: 18,
     currentIndex: -1,
     isPlaying: false,
     isComplete: false,
@@ -97,6 +97,7 @@ function startSimulation(scenarioId) {
         state.isComplete = true;
         setStatus('done', 'Завершено');
         state.eventSource.close();
+        document.getElementById('ai-section').style.display = 'block';
         if (!state.isPlaying && state.steps.length > 0) {
             state.currentIndex = state.steps.length - 1;
             renderCurrentStep();
@@ -307,6 +308,82 @@ function setSpeed(mult) {
     }
 }
 
+async function runAiAnalysis() {
+    const btn = document.getElementById('ai-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Анализ...';
+
+    try {
+        const res = await fetch(`/api/analyze/${state.scenarioId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({steps: state.steps}),
+        });
+        const result = await res.json();
+
+        if (result.error) {
+            alert('Ошибка анализа: ' + result.error);
+            btn.disabled = false;
+            btn.textContent = '🤖 Анализ ИИ агентов';
+            return;
+        }
+
+        const svg = `
+<svg viewBox="0 0 500 320" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
+<rect width="500" height="320" fill="#212529"/>
+<text x="250" y="24" fill="#dee2e6" font-size="13" text-anchor="middle" font-family="monospace" font-weight="bold">📋 Саммари</text>
+<text x="30" y="50" fill="#adb5bd" font-size="10" font-family="monospace">${result.summary || '—'}</text>
+<text x="250" y="90" fill="#dee2e6" font-size="13" text-anchor="middle" font-family="monospace" font-weight="bold">🔍 Аномалии (${(result.anomalies || []).length})</text>
+${(result.anomalies || []).slice(0, 4).map((a, i) =>
+    `<text x="30" y="${115 + i * 20}" fill="${a.severity === 'high' ? '#ea868f' : a.severity === 'medium' ? '#ffda6a' : '#6ea8fe'}" font-size="9" font-family="monospace">${a.severity === 'high' ? '🔴' : a.severity === 'medium' ? '🟡' : '🟢'} ${a.text.length > 80 ? a.text.slice(0, 80) + '…' : a.text}</text>`
+).join('')}
+<text x="250" y="210" fill="#dee2e6" font-size="13" text-anchor="middle" font-family="monospace" font-weight="bold">💡 Предложения (${(result.suggestions || []).length})</text>
+${(result.suggestions || []).slice(0, 4).map((s, i) =>
+    `<text x="30" y="${235 + i * 20}" fill="#75b798" font-size="9" font-family="monospace">${i + 1}. ${s.text.length > 80 ? s.text.slice(0, 80) + '…' : s.text}</text>`
+).join('')}
+<text x="250" y="310" fill="#495057" font-size="8" text-anchor="middle" font-family="monospace">Модель: ${result.model || 'gemma4:e4b'}</text>
+</svg>`;
+
+        const aiStep = {
+            id: 'ai-analysis',
+            number: 18,
+            phase: 'analysis',
+            phase_label: 'Анализ ИИ',
+            location: '🧠 Локально (Ollama)',
+            title: '🤖 Анализ ИИ — аномалии и предложения',
+            subtitle: 'Оценка качества прогона алгоритмом gemma4:e4b',
+            explanation: result.summary || 'Анализ завершён.',
+            task: 'Проверить аномалии и применить предложенные улучшения.',
+            short_desc: 'Анализ аномалий и предложения по улучшению',
+            tags: ['ai', 'ollama', 'gemma4', 'анализ'],
+            why: [
+                ['🔍', 'Аномалии', (result.anomalies || []).slice(0, 3).map(a => `[${a.severity}] ${a.text}`).join('; ') || 'Нет'],
+                ['💡', 'Предложения', (result.suggestions || []).slice(0, 3).map(s => s.text).join('; ') || 'Нет'],
+            ],
+            metrics: {
+                'аномалий': (result.anomalies || []).length,
+                'предложений': (result.suggestions || []).length,
+                'модель': result.model || 'gemma4:e4b',
+            },
+            svg: svg,
+        };
+
+        state.steps.push(aiStep);
+        state.currentIndex = state.steps.length - 1;
+        state.placeholders = Math.max(state.placeholders, state.steps.length);
+        renderCurrentStep();
+        updateProgress();
+        updateStepList();
+        updateControls();
+    } catch (e) {
+        alert('Ошибка соединения: ' + e.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🤖 Анализ ИИ агентов';
+    document.getElementById('ai-section').style.display = 'none';
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const scenarios = await loadScenarios();
     renderLanding(scenarios);
@@ -314,6 +391,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('next-btn').onclick = nextStep;
     document.getElementById('play-btn').onclick = togglePlay;
     document.getElementById('return-btn').onclick = returnToLanding;
+    document.getElementById('ai-btn').onclick = runAiAnalysis;
     document.querySelectorAll('.speed-btn').forEach(btn => {
         btn.onclick = () => setSpeed(parseInt(btn.dataset.speed));
     });

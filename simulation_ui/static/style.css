@@ -483,3 +483,37 @@ body {
 .phase-correlation .step-phase-badge { color: #ffda6a; border-color: #ffda6a33; }
 .phase-filter .step-phase-badge { color: #b580d1; border-color: #b580d133; }
 .phase-result .step-phase-badge { color: #ea868f; border-color: #ea868f33; }
+.phase-analysis .step-phase-badge { color: #b580d1; border-color: #b580d133; }
+
+/* AI analysis button */
+#ai-section {
+    padding: 0 1.5rem 0.75rem;
+    background: #2b3035;
+    border-top: 1px solid #495057;
+}
+
+#ai-btn {
+    background: linear-gradient(135deg, #6f42c1, #b580d1, #6f42c1);
+    background-size: 200% 200%;
+    animation: aiGradient 3s ease infinite;
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    transition: transform 0.15s;
+}
+
+#ai-btn:hover {
+    transform: scale(1.03);
+}
+
+#ai-btn:disabled {
+    animation: none;
+    background: #495057;
+    transform: none;
+}
+
+@keyframes aiGradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
