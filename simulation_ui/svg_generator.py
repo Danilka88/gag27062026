@@ -877,3 +877,165 @@ def svg_replanned_route(old_route_lats, old_route_lons,
     parts.append(f'<text x="250" y="270" fill="#ffda6a" font-size="10" text-anchor="middle" font-family="monospace">Новая дистанция до финиша: {total_distance_km:.2f} км</text>')
     parts.append('<text x="250" y="285" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">долгота</text>')
     return _svg_wrap("".join(parts), 295)
+
+
+def svg_battery_bar(
+    remaining_pct: float,
+    to_finish_pct: float,
+    to_start_pct: float,
+    decision: str,
+    reserve_pct: float = 10.0,
+) -> str:
+    bar_w = 420
+    bar_x = 40
+    bar_h = 28
+    bar_y = 50
+
+    parts = []
+    parts.append(f'<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Оценка заряда батареи</text>')
+
+    total = bar_w
+    used = bar_w * (1 - remaining_pct / 100.0)
+    reserve_w = bar_w * (reserve_pct / 100.0)
+
+    parts.append(f'<rect x="{bar_x}" y="{bar_y}" width="{total}" height="{bar_h}" fill="#2b3035" rx="6" stroke="#495057" stroke-width="1"/>')
+    parts.append(f'<rect x="{bar_x}" y="{bar_y}" width="{used:.1f}" height="{bar_h}" fill="#ea868f" rx="6"/>')
+    if remaining_pct > reserve_pct:
+        avail_x = bar_x + used
+        avail_w = bar_w * (remaining_pct - reserve_pct) / 100.0
+        parts.append(f'<rect x="{avail_x:.1f}" y="{bar_y}" width="{avail_w:.1f}" height="{bar_h}" fill="#75b798" rx="0"/>')
+    res_x = bar_x + bar_w - reserve_w
+    parts.append(f'<rect x="{res_x:.1f}" y="{bar_y}" width="{reserve_w:.1f}" height="{bar_h}" fill="#ffda6a" rx="0"/>')
+    parts.append(f'<rect x="{bar_x + bar_w - reserve_w:.1f}" y="{bar_y}" width="{reserve_w:.1f}" height="{bar_h}" fill="none" stroke="#212529" stroke-width="1.5" rx="0"/>')
+
+    fw = bar_w * to_finish_pct / 100.0
+    sw = bar_w * to_start_pct / 100.0
+    for label, w, color, y_off in [
+        ("до финиша", fw, "#6ea8fe", -8),
+        ("на старт", sw, "#e599f7", +36),
+    ]:
+        if 0 < w < total:
+            x_pos = bar_x + w
+            parts.append(f'<line x1="{x_pos:.1f}" y1="{bar_y + y_off}" x2="{x_pos:.1f}" y2="{bar_y + bar_h + 4}" stroke="{color}" stroke-width="1.5" stroke-dasharray="3,3"/>')
+            parts.append(f'<polygon points="{x_pos - 3:.1f},{bar_y + y_off} {x_pos + 3:.1f},{bar_y + y_off} {x_pos:.1f},{bar_y + y_off + 5}" fill="{color}"/>')
+            parts.append(f'<text x="{x_pos:.1f}" y="{bar_y + y_off - 4:.1f}" fill="{color}" font-size="7" text-anchor="middle" font-family="monospace">{label}</text>')
+
+    parts.append(f'<text x="44" y="{bar_y + 19:.1f}" fill="#dee2e6" font-size="10" font-family="monospace">израсходовано</text>')
+    parts.append(f'<text x="{bar_x + used + 10:.1f}" y="{bar_y + 19:.1f}" fill="#75b798" font-size="10" font-family="monospace">осталось</text>')
+    parts.append(f'<text x="{res_x + 4:.1f}" y="{bar_y + 19:.1f}" fill="#212529" font-size="8" font-family="monospace">резерв</text>')
+
+    legend_items = {
+        "finish": f"Нужно до финиша: {to_finish_pct:.0f}%",
+        "start": f"Нужно на старт: {to_start_pct:.0f}%",
+        "remain": f"Осталось: {remaining_pct:.0f}%",
+    }
+
+    color_map = {"finish": "#6ea8fe", "start": "#e599f7", "remain": "#75b798"}
+    ly = 100
+    parts.append(f'<rect x="40" y="{ly}" width="420" height="55" fill="#212529" fill-opacity="0.8" rx="4"/>')
+    for idx, (key, text) in enumerate(legend_items.items()):
+        cx = 50 + idx * 140
+        parts.append(f'<circle cx="{cx}" cy="{ly + 14}" r="4" fill="{color_map[key]}"/>')
+        parts.append(f'<text x="{cx + 8}" y="{ly + 18}" fill="{color_map[key]}" font-size="9" font-family="monospace">{text}</text>')
+
+    decision_colors = {"finish": "#75b798", "return": "#e599f7", "land": "#6ea8fe"}
+    decision_labels = {"finish": "Маршрут до финиша", "return": "Возврат на старт", "land": "Поиск зоны посадки"}
+    dc = decision_colors.get(decision, "#ffda6a")
+    dl = decision_labels.get(decision, decision)
+    parts.append(f'<text x="250" y="{ly + 42}" fill="{dc}" font-size="12" text-anchor="middle" font-weight="bold" font-family="monospace">Решение: {dl}</text>')
+
+    return _svg_wrap("".join(parts), 175)
+
+
+def svg_landing_zone(
+    dem_lons: np.ndarray,
+    dem_lats: np.ndarray,
+    dem_data: np.ndarray,
+    center_lat: float,
+    center_lon: float,
+    zone_lat: float,
+    zone_lon: float,
+    polygon_lats: list,
+    polygon_lons: list,
+    flatness_m: float,
+    area_m2: float,
+    search_radius_m: float = 500.0,
+) -> str:
+    pw, ph = 440, 220
+    all_lats = list(dem_lats) + polygon_lats + [center_lat, zone_lat]
+    all_lons = list(dem_lons) + polygon_lons + [center_lon, zone_lon]
+    lat_min, lat_max = min(all_lats), max(all_lats)
+    lon_min, lon_max = min(all_lons), max(all_lons)
+    lat_rng = max(lat_max - lat_min, 1e-6)
+    lon_rng = max(lon_max - lon_min, 1e-6)
+    margin = max(lat_rng * 0.15, lon_rng * 0.15, 0.0005)
+    lat_min -= margin
+    lat_max += margin
+    lon_min -= margin
+    lon_max += margin
+
+    def _pt(lat, lon):
+        x = 30 + (lon - lon_min) / (lon_max - lon_min) * pw
+        y = 15 + ph - (lat - lat_min) / (lat_max - lat_min) * ph
+        return x, y
+
+    def _tick(v):
+        if abs(v) < 1: return f"{v:.5f}"
+        if abs(v) < 10: return f"{v:.4f}"
+        return f"{v:.3f}"
+
+    parts = []
+    parts.append(f'<text x="250" y="14" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Поиск зоны аварийной посадки</text>')
+
+    vmin, vmax = float(np.nanmin(dem_data)), float(np.nanmax(dem_data))
+    if vmax <= vmin:
+        vmax = vmin + 1
+
+    for ri in range(len(dem_lats)):
+        for ci in range(len(dem_lons)):
+            lat = float(dem_lats[ri])
+            lon = float(dem_lons[ci])
+            if lat < lat_min or lat > lat_max or lon < lon_min or lon > lon_max:
+                continue
+            val = float(dem_data[ri, ci])
+            if np.isnan(val):
+                continue
+            t = (val - vmin) / (vmax - vmin)
+            t = max(0, min(0.999, t))
+            idx = int(t * (len(DEM_COLORS) - 1))
+            x, y = _pt(lat, lon)
+            parts.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="1.5" height="1.5" fill="{DEM_COLORS[idx]}"/>')
+
+    if len(polygon_lats) >= 4:
+        poly_pts = " ".join(f"{_pt(polygon_lats[i], polygon_lons[i])[0]:.1f},{_pt(polygon_lats[i], polygon_lons[i])[1]:.1f}" for i in range(4))
+        parts.append(f'<polygon points="{poly_pts}" fill="none" stroke="#ffda6a" stroke-width="2" stroke-dasharray="6,3"/>')
+
+    cx, cy = _pt(center_lat, center_lon)
+    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="6" fill="none" stroke="#ea868f" stroke-width="2"/>')
+    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2" fill="#ea868f"/>')
+    parts.append(f'<text x="{cx:.1f}" y="{cy - 10:.1f}" fill="#ea868f" font-size="8" text-anchor="middle" font-family="monospace">БПЛА</text>')
+
+    zx, zy = _pt(zone_lat, zone_lon)
+    parts.append(f'<circle cx="{zx:.1f}" cy="{zy:.1f}" r="7" fill="none" stroke="#75b798" stroke-width="2"/>')
+    parts.append(f'<circle cx="{zx:.1f}" cy="{zy:.1f}" r="3" fill="#75b798"/>')
+    parts.append(f'<text x="{zx:.1f}" y="{zy - 10:.1f}" fill="#75b798" font-size="8" text-anchor="middle" font-family="monospace">Зона посадки</text>')
+
+    for i in range(4):
+        frac = i / 3
+        y_t = 15 + ph * (1 - frac)
+        x_t = 30 + pw * frac
+        lat_v = float(lat_min + frac * (lat_max - lat_min))
+        lon_v = float(lon_min + frac * (lon_max - lon_min))
+        parts.append(f'<line x1="26" y1="{y_t:.1f}" x2="30" y2="{y_t:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="24" y="{y_t + 3:.1f}" fill="#adb5bd" font-size="7" text-anchor="end" font-family="monospace">{_tick(lat_v)}</text>')
+        parts.append(f'<line x1="{x_t:.1f}" y1="{15 + ph:.1f}" x2="{x_t:.1f}" y2="{15 + ph + 4:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="{x_t:.1f}" y="{15 + ph + 14:.1f}" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">{_tick(lon_v)}</text>')
+
+    parts.append(f'<rect x="28" y="22" width="175" height="50" fill="#212529" fill-opacity="0.85" rx="4"/>')
+    parts.append(f'<text x="34" y="35" fill="#ffda6a" font-size="8" font-family="monospace">— зона посадки</text>')
+    parts.append(f'<text x="34" y="47" fill="#75b798" font-size="8" font-family="monospace">● ровность: {flatness_m:.1f} м</text>')
+    parts.append(f'<text x="34" y="59" fill="#75b798" font-size="8" font-family="monospace">● площадь: {area_m2:.0f} м²</text>')
+    parts.append('<text x="250" y="270" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">долгота</text>')
+    parts.append('<text x="10" y="130" fill="#adb5bd" font-size="9" text-anchor="middle" transform="rotate(-90,10,130)" font-family="monospace">широта</text>')
+
+    return _svg_wrap("".join(parts), 285)

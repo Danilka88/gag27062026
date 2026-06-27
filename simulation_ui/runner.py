@@ -22,9 +22,12 @@ from simulation_ui.svg_generator import (
     svg_rolling_discrimination, svg_r_matrix,
     svg_recovery_drift, svg_recovery_heatmap, svg_recovery_position,
     svg_replanned_route,
+    svg_battery_bar,
+    svg_landing_zone,
 )
 from gagarin.recovery import LostRecoveryModule
 from gagarin.replanning import RouteReplanner
+from gagarin.landing import LandingZoneFinder
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -716,3 +719,125 @@ class SimulationRunner:
                 "finish_lat": f"{finish_lat:.6f}",
                 "finish_lon": f"{finish_lon:.6f}",
             })
+
+            max_flight_s = cfg.flight_duration
+            elapsed_s = lost_end / cfg.nmea_freq_hz
+            remaining_s = max_flight_s - elapsed_s
+            reserve_s = max_flight_s * cfg.battery_reserve_pct / 100.0
+            available_s = remaining_s - reserve_s
+
+            current_speed = last_good_est.speed_ms if last_good_est else cfg.default_speed
+            max_range_m = available_s * current_speed
+
+            start_lat = true_lats[0]
+            start_lon = true_lons[0]
+
+            dist_to_finish_m = haversine_m(rec_result.recovered_lat, rec_result.recovered_lon,
+                                            finish_lat, finish_lon)
+            dist_to_start_m = haversine_m(rec_result.recovered_lat, rec_result.recovered_lon,
+                                           start_lat, start_lon)
+
+            total_flight_range_m = current_speed * max_flight_s
+            to_finish_pct = dist_to_finish_m / max(total_flight_range_m, 1) * 100.0
+            to_start_pct = dist_to_start_m / max(total_flight_range_m, 1) * 100.0
+            remaining_pct = remaining_s / max_flight_s * 100.0
+
+            if dist_to_finish_m <= max_range_m:
+                decision = "finish"
+            elif dist_to_start_m <= max_range_m:
+                decision = "return"
+            else:
+                decision = "land"
+
+            yield _make_step(23, svg_battery_bar(
+                remaining_pct, to_finish_pct, to_start_pct, decision, cfg.battery_reserve_pct,
+            ), {
+                "remaining_pct": f"{remaining_pct:.1f}",
+                "to_finish_pct": f"{to_finish_pct:.1f}",
+                "to_start_pct": f"{to_start_pct:.1f}",
+                "decision": decision,
+                "max_range_m": f"{max_range_m:.0f}",
+                "dist_to_finish_m": f"{dist_to_finish_m:.0f}",
+                "dist_to_start_m": f"{dist_to_start_m:.0f}",
+            })
+
+            if decision == "land":
+                finder = LandingZoneFinder(dem)
+                landing_zone = finder.find_landing_zone(
+                    rec_result.recovered_lat, rec_result.recovered_lon,
+                    search_radius_m=500.0, window_size_m=30.0,
+                    flatness_threshold_m=5.0, min_area_m2=400.0,
+                )
+
+                if landing_zone:
+                    lons, lats, data = dem.get_geographic_grid()
+                    yield _make_step(24, svg_landing_zone(
+                        lons, lats, data,
+                        rec_result.recovered_lat, rec_result.recovered_lon,
+                        landing_zone.lat, landing_zone.lon,
+                        landing_zone.polygon_lats, landing_zone.polygon_lons,
+                        landing_zone.flatness_m, landing_zone.area_m2,
+                        search_radius_m=500.0,
+                    ), {
+                        "zone_lat": f"{landing_zone.lat:.6f}",
+                        "zone_lon": f"{landing_zone.lon:.6f}",
+                        "flatness_m": f"{landing_zone.flatness_m:.1f}",
+                        "area_m2": f"{landing_zone.area_m2:.0f}",
+                        "cell_count": landing_zone.cell_count,
+                    })
+
+                    zone_replanner = RouteReplanner()
+                    zone_route = zone_replanner.replan(
+                        rec_result.recovered_lat, rec_result.recovered_lon,
+                        landing_zone.lat, landing_zone.lon, n_waypoints=15,
+                    )
+                    zone_new_lats = [p[0] for p in zone_route.waypoints]
+                    zone_new_lons = [p[1] for p in zone_route.waypoints]
+
+                    yield _make_step(25, svg_replanned_route(
+                        route_lats, route_lons,
+                        rec_result.recovered_lat, rec_result.recovered_lon,
+                        zone_new_lats, zone_new_lons,
+                        landing_zone.lat, landing_zone.lon,
+                        zone_route.total_distance_m / 1000.0,
+                    ), {
+                        "new_distance_km": f"{zone_route.total_distance_m / 1000:.2f}",
+                        "n_waypoints": zone_route.n_waypoints,
+                        "decision": "land",
+                        "zone_lat": f"{landing_zone.lat:.6f}",
+                        "zone_lon": f"{landing_zone.lon:.6f}",
+                    })
+                else:
+                    yield _make_step(24, svg_empty("Зона посадки не найдена"), {"decision": "land", "zone_found": False})
+            elif decision == "return":
+                return_replanner = RouteReplanner()
+                return_route = return_replanner.replan(
+                    rec_result.recovered_lat, rec_result.recovered_lon,
+                    start_lat, start_lon, n_waypoints=20,
+                )
+                return_new_lats = [p[0] for p in return_route.waypoints]
+                return_new_lons = [p[1] for p in return_route.waypoints]
+
+                yield _make_step(24, svg_replanned_route(
+                    route_lats, route_lons,
+                    rec_result.recovered_lat, rec_result.recovered_lon,
+                    return_new_lats, return_new_lons,
+                    start_lat, start_lon,
+                    return_route.total_distance_m / 1000.0,
+                ), {
+                    "new_distance_km": f"{return_route.total_distance_m / 1000:.2f}",
+                    "n_waypoints": return_route.n_waypoints,
+                    "decision": "return",
+                })
+            else:
+                yield _make_step(24, svg_replanned_route(
+                    route_lats, route_lons,
+                    rec_result.recovered_lat, rec_result.recovered_lon,
+                    new_lats, new_lons,
+                    finish_lat, finish_lon,
+                    route.total_distance_m / 1000.0,
+                ), {
+                    "new_distance_km": f"{route.total_distance_m / 1000:.2f}",
+                    "n_waypoints": route.n_waypoints,
+                    "decision": "finish",
+                })

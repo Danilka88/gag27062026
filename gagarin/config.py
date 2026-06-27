@@ -34,6 +34,7 @@ class Config:
     default_azimuth: float = 45.0
     default_speed: float = 60.0
     flight_duration: float = 300.0
+    battery_reserve_pct: float = 10.0
 
     def __post_init__(self):
         if self.window_size <= 0:

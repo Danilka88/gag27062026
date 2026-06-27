@@ -1,6 +1,6 @@
 const state = {
     steps: [],
-    placeholders: 23,
+    placeholders: 26,
     currentIndex: -1,
     isPlaying: false,
     isComplete: false,
@@ -33,6 +33,7 @@ const STEP_NAMES = [
     "R-матрица", "Траектория", "ESKF",
     "Качество", "Итог", "Анализ ИИ", "Карта маршрута",
     "Потеря позиции", "Position Grid Search", "Результат recovery", "Перестроение",
+    "Батарея", "Зона посадки", "Финальный маршрут",
 ];
 
 async function loadScenarios() {
@@ -877,7 +878,7 @@ function switchTab(tabId) {
 function getTabSteps(tabId) {
     const phaseMap = {
         'pipeline': ['pre-flight', 'data', 'correlation', 'filter', 'result', 'analysis'],
-        'recovery': ['recovery'],
+        'recovery': ['recovery', 'battery', 'landing', 'final'],
         'replan': ['replan'],
     };
     const phases = phaseMap[tabId] || phaseMap.pipeline;
