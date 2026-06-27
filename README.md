@@ -1,46 +1,211 @@
 # Gagarin
 
-**Terrain Contour Matching (TERCOM) navigation for GNSS-denied UAV operations.**
+**TERCOM-навигация для БПЛА в условиях отсутствия GNSS.**
 
-Estimates position and velocity of an aircraft by correlating radar altimeter
-profiles against a digital elevation model (DEM). Designed for commercial UAVs
-operating without GNSS (GPS-denied environments).
+Система оценивает положение и скорость летательного аппарата путём корреляции
+профилей радиовысотомера с цифровой моделью рельефа (DEM). Предназначена для
+коммерческих БПЛА, работающих в GNSS-denied среде.
 
-Includes a **pre-flight mission planning** toolchain: analyses terrain
-informativeness along the route before takeoff, identifies segments at risk of
-false TERCOM matches, and packages the data for onboard use.
+Включает **предполётное планирование**: оценку информативности рельефа вдоль
+маршрута, выявление участков риска ложных корреляций и упаковку данных для
+бортового использования.
 
 ---
 
-## Quick Start
+## Технология
 
-Launch the interactive TERCOM simulation:
+### TERCOM (Terrain Contour Matching)
 
-```bash
-pip install -e .
-uvicorn simulation_ui.main:app
+Классический метод коррекции навигации по рельефу:
+
+1. Борт измеряет абсолютную высоту (барометр) и относительную (радиовысотомер).
+   Разность даёт профиль рельефа под траекторией.
+2. Буфер накапливает `N` последних измерений — скользящее окно.
+3. Для гипотез азимута и скорости строится ожидаемый (reference) профиль из DEM.
+4. Вычисляется нормализованная кросс-корреляция (NCC) между наблюдаемым и
+   эталонным профилями.
+5. Гипотеза с максимальной корреляцией даёт оценку вектора скорости.
+6. Dead reckoning (движение по сфере) интегрирует скорость в положение.
+7. Error-State Kalman Filter (ESKF) сглаживает оценки и подавляет шум.
+
+### coarse-to-fine search
+
+| Этап | Шаг азимута | Количество гипотез | Описание |
+|------|-------------|-------------------|----------|
+| Coarse | 10° | 36 × N_speed | Полный охват 360° |
+| Fine | 0.5° | ±6° вокруг top-5 | Уточнение вокруг лучших кандидатов |
+
+Скорость уточняется одновременно через `np.linspace` в окрестности ±15 м/с.
+
+### Pre-flight fingerprinting
+
+Для каждой точки маршрута вычисляются метрики:
+- **std elevation** — стандартное отклонение рельефа в окрестности
+- **gradient magnitude** — модуль градиента высот
+- **Minima Ratio** (Akinci 2026) — доля минимумов высот, характеризует
+ 「узнаваемость」участка
+- **NCC under lateral offset** — насколько сильно падает корреляция при
+  боковом смещении (индикатор ложных срабатываний)
+
+Результат упаковывается в SQLite (с R-Tree индексом) + GeoTIFF карта
+информативности.
+
+---
+
+## Архитектура
+
+```
+                    ┌──────────────────────────┐
+                    │  simulation_ui/main.py   │
+                    │  FastAPI + SSE (18 шагов)│
+                    └────┬─────────────────────┘
+                         │
+         ┌───────────────┼───────────────────┐
+         ▼               ▼                   ▼
+   ┌──────────┐   ┌──────────┐   ┌──────────────────┐
+   │ pipeline │   │data_gen  │   │  svg_generator   │
+   │   .py    │   │erator.py │   │      .py         │
+   └────┬─────┘   └──────────┘   └──────────────────┘
+        │
+   ┌────┼────┬─────┬──────┬──────┬────┐
+   ▼    ▼    ▼     ▼      ▼      ▼    ▼
+buffer correl estim  dem    geo   eskf qual
+       ator  ator  loader  utils      ity
 ```
 
-Opens a real‑time step‑by‑step simulation of the full TERCOM pipeline
-(DEM loading → NMEA parsing → correlation → ESKF → result).
+### Пакет `gagarin/` (ядро)
 
-## Commands
+| Модуль | Назначение |
+|--------|-----------|
+| `config.py` | Все тюнябельные параметры: размер окна, шаги поиска, пороги. `merge()` с предупреждением на неизвестные ключи. |
+| `nmea_parser.py` | Обёртка над `pynmea2`. Парсит `$GPGGA` → `NMEAReading` dataclass. |
+| `buffer.py` | Скользящее окно (deque). `add()`, `is_full()`, `get_profile()`, `advance_distance()`. Адаптивная дистанция. |
+| `dem_loader.py` | Загрузка GeoTIFF через `rioxarray`. Трансформация CRS (`pyproj`). Билинейная интерполяция. |
+| `correlator.py` | `TERCOMCorrelator` — coarse → fine поиск. `HypothesisSearch`, `CorrelationMetrics` (NCC, cross-correlation, confidence). |
+| `estimator.py` | `VelocityEstimator` — преобразует `MatchResult` в `NavigationEstimate` (dataclass). Dead reckoning central shift. |
+| `geo_utils.py` | `offset_coords()` — движение по сфере. `offset_coords_batch()` — векторизованная версия для NumPy. |
+| `quality.py` | Классификация good/marginal/poor + confidence score. |
+| `eskf.py` | `ErrorStateKalmanFilter` — 6D фильтр (lat, lon, v_N, v_E, v_D, baro_bias). `solve` вместо `inv`. |
+| `pipeline.py` | `NavigationPipeline` — оркестратор: буфер → корреляция → оценка → dead reckoning → ESKF. |
+| `preprocess.py` | `TerrainAnalyzer`, `MissionPreprocessor` — предполётный анализ. |
+| `data_generator.py` | Симуляция полёта: NMEA строки с шумом, случайные траектории. |
+| `profile.py` | Извлечение и валидация барометрических/радиолокационных профилей. |
+| `constants.py` | `EARTH_RADIUS`, `NEAR_ZERO`, `GRAVITY`. |
 
-| Command | Description |
-|---|---|
-| `gagarin prepare-route` | Pre‑flight: evaluate terrain along waypoints, build mission package |
-| `gagarin viz-mission` | Generate interactive mission viewer HTML from a mission package |
-| `gagarin generate-dem` | Generate a synthetic DEM (400×400, procedural terrain) |
-| `gagarin generate-all` | Generate all 10 scenario DEMs at once |
-| `gagarin download-dem` | Download Copernicus GLO‑30 tiles for a region |
-| `gagarin analyze NMEA_FILE` | Process a pre‑recorded NMEA log file (offline or real‑time) |
+### Пакет `simulation_ui/` (интерактивная симуляция)
 
-See `gagarin <command> --help` for options.
+| Модуль | Назначение |
+|--------|-----------|
+| `main.py` | FastAPI сервер: `GET /api/simulate/{id}` → SSE поток из 18 шагов. |
+| `runner.py` | `SimulationRunner` — загружает DEM, гоняет pipeline, выдаёт StepData словари. |
+| `svg_generator.py` | 13 SVG-генераторов: DEM, NMEA, буфер, профиль, тепловая карта, NCC bar, лаг, траектория, ESKF ошибка, качество, corridor, fingerprints. |
+| `texts.py` | Пояснения для каждого шага: заголовок, подзаголовок, explanation, task, why (3 карточки), tags. |
+| `static/` | SPA на чистом JS: SSE-клиент, step buffer, auto-play (×1–×10), пошаговый просмотр, AI-анализ. |
 
-### Pre-flight workflow
+### Пакет `gagarin/viz/`
+
+| Модуль | Назначение |
+|--------|-----------|
+| `mission.py` | `mission_viewer()` — 3-панельный HTML вьювер: карта, профиль информативности, fingerprint матрица. |
+
+---
+
+## Установка
+
+### Требования
+
+- Python ≥ 3.11
+- NumPy ≥ 1.22 (< 2.5)
+- Браузер для simulation UI
+
+### Из репозитория
 
 ```bash
-# 1. Create a waypoints CSV (lat,lon per line)
+git clone <repo> gagarin
+cd gagarin
+uv sync     # или: pip install -e ".[dev]"
+```
+
+### Проверка
+
+```bash
+uv run pytest -v
+# 41 passed
+```
+
+### Запуск симуляции
+
+```bash
+uv run uvicorn simulation_ui.main:app
+# → http://127.0.0.1:8000
+```
+
+---
+
+## Использование
+
+### Интерактивная симуляция (UI)
+
+```bash
+uv run uvicorn simulation_ui.main:app --reload
+```
+
+Откройте браузер на `http://127.0.0.1:8000`. Доступно 10 сценариев
+с разными DEM (Камчатка, Кавказ, Крым, Урал, Алтай и др.).
+
+UI показывает 18 шагов TERCOM-конвейера в реальном времени:
+1. Fingerprints маршрута (карта информативности)
+2. Загрузка DEM
+3. Парсинг NMEA
+4. Буферизация
+5. Профиль рельефа
+6. Тепловая карта корреляций
+7. NCC bar (результаты coarse поиска)
+8. Cross-correlation lag
+9. Оценка скорости
+10. Dead reckoning
+11. ESKF коррекция
+12. Ошибка ESKF
+13. Качество оценки
+14. Траектория
+15. Corridor неопределённости
+16. Результат
+17. Сводка улучшений
+18. Финальная траектория
+
+### CLI
+
+```bash
+# Список команд
+gagarin --help
+
+# Предполётный анализ маршрута
+gagarin prepare-route \
+  --waypoints waypoints.csv \
+  -d data/dem/dramatic_kamchatka.tif \
+  -o mission_pkg
+
+# Визуализация миссии
+gagarin viz-mission mission_pkg
+# → открывается mission_viewer.html
+
+# Генерация синтетических DEM
+gagarin generate-dem -o data/dem/my_dem.tif
+
+# Скачивание Copernicus GLO-30
+gagarin download-dem \
+  --lat 56.0 --lon 160.0 \
+  --size 0.5 \
+  -o data/dem/copernicus.tif
+
+# Обработка NMEA лога
+gagarin analyze nmea_log.txt
+```
+
+### Предполётный workflow
+
+```bash
+# 1. Создать waypoints CSV
 cat > waypoints.csv <<EOF
 lat,lon
 56.10,160.60
@@ -51,86 +216,54 @@ lat,lon
 56.23,160.77
 EOF
 
-# 2. Analyse terrain along the route, compute fingerprints, build mission package
-gagarin prepare-route --waypoints waypoints.csv -d data/dem/dramatic_kamchatka.tif -o mission_pkg
+# 2. Анализ рельефа
+gagarin prepare-route --waypoints waypoints.csv \
+  -d data/dem/dramatic_kamchatka.tif \
+  -o mission_pkg
 
-# 3. Open the interactive pre-flight viewer
+# 3. Просмотр
 gagarin viz-mission mission_pkg
 ```
 
-Output: `mission_viewer.html` with three panels — route map + info heatmap,
-terrain informativeness profile along the route, and fingerprint NCC matrix
-(lateral offset vs. self-match) for false‑fix risk assessment.
+---
 
-## Documentation
+## DEM
 
-| Document | Contents |
-|---|---|
-| `AGENTS.md` | Technical context for AI coding agents |
+| DEM | Размер | Высоты | Std | Описание |
+|-----|--------|--------|-----|----------|
+| `synthetic_kamchatka.tif` | 400×400 | 67–547 м | 99 м | Плавный, для отладки |
+| `dramatic_kamchatka.tif` | 400×400 | 1–3489 м | 688 м | 6 вулканов, гребни, каньоны |
+| `caucasus.tif` | 400×400 | 1–4114 м | 953 м | Пики до 5000 м, ущелья |
+| `ural.tif` | 400×400 | 87–1600 м | 495 м | Пологий хребет |
+| `altai.tif` | 400×400 | 103–3671 м | 817 м | Плато + пики |
+| `crimea.tif` | 400×400 | 1–1192 м | 326 м | Гребень + море |
+| `siberia.tif` | 400×400 | 30–86 м | 17 м | Равнина |
+| `sakhalin.tif` | 400×400 | 1–900 м | 358 м | Остров + сопки |
+| `karelia.tif` | 400×400 | 28–391 м | 85 м | Холмы + озёра |
+| `primorye.tif` | 400×400 | 1–887 м | 222 м | Сопки + побережье |
 
-## Project Structure
+Генерация всех DEM: `gagarin generate-all`
 
-```
-simulation_ui/       Interactive TERCOM simulation server (FastAPI + SSE)
-  main.py            FastAPI app: GET /api/simulate/{id} → SSE stream (14 steps)
-  runner.py          SimulationRunner — orchestrates DEM + pipeline → StepData
-  svg_generator.py   13 SVG generators for real‑time step visualisation
-  texts.py           Explanations for all 14 pipeline steps
-  static/            SPA frontend (app.js + style.css)
-gagarin/
-  main.py            CLI (prepare-route, viz-mission, analyze, ...)
-  config.py          All tunable parameters (window, steps, thresholds)
-  nmea_parser.py     pynmea2 wrapper → NMEAReading dataclass
-  buffer.py          NMEABuffer — sliding window with adaptive distance
-  dem_loader.py      DEMLoader, CoordinateTransformer, DEMInterpolator
-  correlator.py      TERCOMCorrelator, HypothesisSearch, CorrelationMetrics
-  estimator.py       VelocityEstimator → NavigationEstimate (dataclass)
-  geo_utils.py       Spherical coordinate formulas, batch offset
-  quality.py         _assess() — good/marginal/poor + confidence score
-  eskf.py            Error‑State Kalman Filter (6D, solve, degree‑bug free)
-  pipeline.py        NavigationPipeline — orchestrator (buffer→corr→dr→KF)
-  preprocess.py      TerrainAnalyzer, MissionPreprocessor — pre‑flight planning
-                     (fingerprints, adaptive corridor, SQLite + GeoTIFF packaging)
-  data_generator.py  Flight simulation → NMEA strings with noise
-  profile.py         Baro/radar profile extraction and validation
-  viz/mission.py     mission_viewer — pre‑flight 3‑panel HTML viewer
-data/
-  dem/               10 GeoTIFF files (synthetic_kamchatka.tif, caucasus.tif, …)
-  output/            Mission viewer HTML, estimates.json
-tests/               40 tests (config, geo_utils, eskf, nmea_parser, correlator, estimator)
-```
+---
 
-## Performance
+## Производительность
 
-- 40 tests in ~0.3 s
-- 231 estimates per 300 s flight in ~13 s real‑time (~60 ms/search)
-- ESKF predict/update/reset ≪ 1 ms
-- Pre‑flight: 6 waypoints → 122 fingerprint points in ~5 s
-- Target (RPi ARM64): <100 ms/search via JIT
+| Операция | Время |
+|----------|-------|
+| 41 тест | ~0.3 с |
+| 231 оценка (300 с полёт) | ~13 с real-time |
+| 1 корреляционный поиск | ~60 мс |
+| ESKF predict / update / reset | << 1 мс |
+| 6 waypoints → 122 fingerprint | ~5 с |
 
-## DEMs
+---
 
-| DEM | Size | Elevation | Std | Description |
-|-----|------|-----------|-----|-------------|
-| `synthetic_kamchatka.tif` | 400×400 | 67–547 m | 99 m | Smooth, for development |
-| `dramatic_kamchatka.tif` | 400×400 | 1–3489 m | 688 m | 6 volcanoes + ridges + canyons |
-| `caucasus.tif` | 400×400 | 1–4114 m | 953 m | High peaks, deep gorges |
-| `ural.tif` | 400×400 | 87–1600 m | 495 m | Gentle mountain range |
-| `altai.tif` | 400×400 | 103–3671 m | 817 m | Plateau + peaks |
-| `crimea.tif` | 400×400 | 1–1192 m | 326 m | Ridge + sea level |
-| `siberia.tif` | 400×400 | 30–86 m | 17 m | Flat plain |
-| `sakhalin.tif` | 400×400 | 1–900 m | 358 m | Island + hills |
-| `karelia.tif` | 400×400 | 28–391 m | 85 m | Hills + lakes |
-| `primorye.tif` | 400×400 | 1–887 m | 222 m | Coastal hills |
+## Ссылки
 
-All generated with `gagarin generate-all`.
+- L. D. Hostetler, R. D. Andreas, *Nonlinear Kalman Filtering Techniques for Terrain-Aided Navigation*
+- Copernicus GLO-30 DEM: `s3://copernicus-dem-30m/`
+- `pynmea2`, `rioxarray`, `pyproj`, `plotly`, `click`, `numpy`
 
-## Approach
+## Лицензия
 
-- **Coarse‑to‑fine search**: 10° coarse azimuth sweep → 0.5° fine search around top‑5 candidates. Speed refined simultaneously.
-- **Dead reckoning fallback**: when correlation fails (flat terrain or sensor noise), the pipeline falls back to ESKF prediction + last‑estimate extrapolation instead of producing garbage matches.
-- **Pre‑flight fingerprinting**: for each waypoint, the terrain is evaluated with multiple metrics — std elevation, gradient magnitude, Minima Ratio (Akinci 2026), and NCC under lateral offset. Fingerprint profiles are stored in SQLite with an R‑Tree spatial index, packaged together with a GeoTIFF info map.
-
-## License
-
-MIT — see `LICENSE`.
+MIT — см. `LICENSE`.
