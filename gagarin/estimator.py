@@ -5,6 +5,7 @@ import math
 from gagarin.correlator import MatchResult
 from gagarin.config import Config
 from gagarin.geo_utils import offset_coords
+from gagarin.quality import assess_match
 
 
 @dataclass
@@ -57,4 +58,5 @@ class VelocityEstimator:
             lag_samples=match.lag_samples,
             lag_distance_m=lag_distance,
             terrain_roughness=match.terrain_roughness,
+            quality=assess_match(match),
         )

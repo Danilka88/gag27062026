@@ -139,14 +139,34 @@ body {
 
 .step-entry {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.5rem;
-    padding: 0.4rem 1rem;
+    padding: 0.5rem 1rem;
     cursor: pointer;
     font-size: 0.82rem;
     color: #adb5bd;
     transition: all 0.15s;
     border-left: 3px solid transparent;
+}
+
+.step-entry .step-title {
+    font-size: 0.82rem;
+    line-height: 1.3;
+}
+
+.step-entry .step-desc {
+    font-size: 0.65rem;
+    color: #6c757d;
+    line-height: 1.2;
+    margin-top: 1px;
+}
+
+.location-badge {
+    font-size: 0.6rem;
+    color: #6c757d;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 .step-entry:hover {

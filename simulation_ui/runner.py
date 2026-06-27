@@ -198,9 +198,15 @@ class SimulationRunner:
         parser = NMEAParser()
         all_readings = [r for line in nmea_lines if (r := parser.parse_line(line)) is not None]
 
-        alts = [r.altitude for r in all_readings[:20]]
+        max_nmea_pts = 120
+        if len(all_readings) > max_nmea_pts:
+            nmea_step = len(all_readings) // max_nmea_pts
+            alts = [r.altitude for r in all_readings[::nmea_step]]
+        else:
+            alts = [r.altitude for r in all_readings]
         yield _make_step(3, svg_nmea(alts), {
             "nmea_lines_total": n_total,
+            "nmea_shown": len(alts),
             "nmea_freq_hz": cfg.nmea_freq_hz,
             "flight_duration_s": f"{params.duration_s:.0f}",
         })
@@ -359,8 +365,9 @@ class SimulationRunner:
         })
 
         r_scale = 1.0 if best_fine and best_fine.correlation > 0.8 else 5.0 if best_fine and best_fine.correlation < 0.5 else 3.0
+        base_r = max((1.0 - best_fine.correlation) * 200.0, 20.0) if best_fine else 100.0
 
-        yield _make_step(12, svg_r_matrix(100.0, r_scale), {
+        yield _make_step(12, svg_r_matrix(base_r, r_scale), {
             "r_scale": f"{r_scale:.1f}x",
             "adaptive_response": "ignored" if r_scale > 3 else "applied",
             "trust_level": "high" if r_scale < 2 else "low",

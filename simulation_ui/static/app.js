@@ -159,13 +159,16 @@ function updateStepList() {
             const step = displaySteps[i];
             if (step.phase_label !== currentPhase) {
                 currentPhase = step.phase_label;
-                html += `<div class="phase-label">${currentPhase}</div>`;
+                const loc = step.location || '';
+                html += `<div class="phase-label">${currentPhase}${loc ? ' <span class="location-badge">' + loc + '</span>' : ''}</div>`;
             }
             let cls = 'step-entry pending';
             if (i === state.currentIndex) cls = 'step-entry active';
             else if (i < state.currentIndex) cls = 'step-entry done';
             html += `<div class="${cls}" data-idx="${i}" onclick="goToStep(${i})">
-                <span class="step-num">${step.number}</span>${step.title.split(' — ')[0]}
+                <span class="step-num">${step.number}</span>
+                <div class="step-title">${step.title.split(' — ')[0]}</div>
+                <div class="step-desc">${step.short_desc || ''}</div>
             </div>`;
         } else {
             html += `<div class="step-entry pending disabled" style="opacity:0.5">
