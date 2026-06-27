@@ -64,6 +64,9 @@ function renderLanding(scenarios) {
                 <div class="mb-2">${info.description}</div>
                 <div class="text-secondary-emphasis small">
                     DEM: ${info.dem_size} · σ=${info.dem_std} · ${info.dem_name}
+                </div>
+                <div class="text-secondary-emphasis small mt-1">
+                    ${(info.flight_duration * info.speed_ms / 1000).toFixed(0)} км · ${info.speed_ms} м/с · ${info.azimuth_deg}° · шум ${info.noise_std} м
                 </div>`;
             startBtn.disabled = false;
         } else {
@@ -655,22 +658,29 @@ function pauseMapAnimation() {
 function stepMapAnimation() {
     if (!mapState.animPlaying) return;
     const data = mapState.data;
-    if (mapState.animPos >= data.true_path.length - 1) {
+    const totalN = data.true_path.length;
+    if (mapState.animPos >= totalN - 1) {
         pauseMapAnimation();
         const playBtn = document.getElementById('map-play-btn');
         if (playBtn) playBtn.textContent = '▶ Играть';
         return;
     }
     const firstEstIdx = data.first_estimate ? data.first_estimate.nmea_index : -1;
-    const skip = (firstEstIdx > 0 && mapState.animPos < firstEstIdx)
-        ? Math.max(1, Math.floor(firstEstIdx / 25))
-        : 1;
-    const dist = Math.min(skip, data.true_path.length - 1 - mapState.animPos);
-    mapState.animPos += dist;
-    updateTrajectoryFrame(mapState.animPos);
-    const speed = state.speed;
-    const delay = (firstEstIdx > 0 && mapState.animPos < firstEstIdx) ? 80 : 200;
-    mapState.animTimer = setTimeout(stepMapAnimation, delay / speed);
+    if (firstEstIdx > 0 && mapState.animPos < firstEstIdx) {
+        const skip = Math.max(1, Math.floor(firstEstIdx / 25));
+        const dist = Math.min(skip, totalN - 1 - mapState.animPos);
+        mapState.animPos += dist;
+        updateTrajectoryFrame(mapState.animPos);
+        mapState.animTimer = setTimeout(stepMapAnimation, 80 / state.speed);
+    } else {
+        const remaining = totalN - 1 - mapState.animPos;
+        const targetFrames = 80;
+        const skip = Math.max(1, Math.floor(remaining / targetFrames));
+        const dist = Math.min(skip, remaining);
+        mapState.animPos += dist;
+        updateTrajectoryFrame(mapState.animPos);
+        mapState.animTimer = setTimeout(stepMapAnimation, 200 / state.speed);
+    }
 }
 
 function cleanupMap() {

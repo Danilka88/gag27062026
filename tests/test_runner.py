@@ -3,7 +3,7 @@
 def test_synthetic_scenario_produces_valid_steps():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
-    steps = list(runner.run())
+    steps = list(runner.run(overrides={"flight_duration": 40}))
     assert len(steps) == 18
     for i, step in enumerate(steps):
         assert 'id' in step
@@ -17,7 +17,7 @@ def test_synthetic_scenario_produces_valid_steps():
 def test_no_fake_estimates():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
-    steps = list(runner.run())
+    steps = list(runner.run(overrides={"flight_duration": 40}))
     step13 = steps[13]
     assert step13['id'] == 'step-b8'
     assert 'n_estimates' in step13['metrics']
@@ -70,7 +70,7 @@ def test_heatmap_uses_local_indices():
 def test_corridor_width_uses_segment_distance():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
-    steps = list(runner.run())
+    steps = list(runner.run(overrides={"flight_duration": 40}))
     step2 = steps[2]
     assert step2['id'] == 'step-p3'
     assert step2['metrics']['corridor_width_m'] != "10200"
@@ -79,7 +79,7 @@ def test_corridor_width_uses_segment_distance():
 def test_profile_has_reference():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
-    steps = list(runner.run())
+    steps = list(runner.run(overrides={"flight_duration": 40}))
     step8 = steps[8]
     assert step8['id'] == 'step-b6'
     assert 'NCC' in step8['svg']
@@ -88,7 +88,7 @@ def test_profile_has_reference():
 def test_trajectory_map_step_has_valid_data():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
-    steps = list(runner.run())
+    steps = list(runner.run(overrides={"flight_duration": 40}))
     traj_step = next(s for s in steps if s['id'] == 'trajectory-map')
     assert 'metrics' in traj_step
     traj = traj_step['metrics'].get('trajectory')
@@ -116,7 +116,7 @@ def test_trajectory_map_step_has_valid_data():
 def test_improvement_steps_present():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')
-    steps = list(runner.run())
+    steps = list(runner.run(overrides={"flight_duration": 40}))
     step10 = steps[10]
     assert step10['id'] == 'step-improvement-1'
     assert 'aggregated_std' in step10['metrics']

@@ -26,103 +26,133 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCENARIOS = {
     "synthetic": {
         "name": "Камчатка — плавный рельеф",
-        "description": "Плавный рельеф, σ=99 м — идеален для отладки TERCOM",
+        "description": "Плавный рельеф, σ=99 м — 12 км на NE, low noise, идеальная корреляция",
         "dem_path": "data/dem/synthetic_kamchatka.tif",
         "dem_name": "Синтетическая Камчатка",
         "dem_size": "400×400",
         "dem_std": "99 м",
         "baro_altitude": 1500.0,
-        "flight_duration": 40.0,
+        "flight_duration": 200.0,
+        "azimuth_deg": 45,
+        "speed_ms": 60,
+        "noise_std": 1.0,
     },
     "dramatic": {
         "name": "Камчатка — вулканы и каньоны",
-        "description": "6 вулканов + гребни + каньоны, σ=688 м — сложный рельеф",
+        "description": "6 вулканов, σ=688 м — 20 км на NW через все кратеры, умеренный шум",
         "dem_path": "data/dem/dramatic_kamchatka.tif",
         "dem_name": "Драматическая Камчатка",
         "dem_size": "400×400",
         "dem_std": "688 м",
         "baro_altitude": 3500.0,
-        "flight_duration": 40.0,
+        "flight_duration": 250.0,
+        "azimuth_deg": 315,
+        "speed_ms": 80,
+        "noise_std": 2.0,
     },
     "caucasus": {
         "name": "Кавказ — высокогорье",
-        "description": "Острые пики до 5000 м, σ=953 м — экстремальный рельеф",
+        "description": "Пики до 5000 м, σ=953 м — 12.5 км на E вдоль Главного хребта",
         "dem_path": "data/dem/caucasus.tif",
         "dem_name": "Кавказ",
         "dem_size": "400×400",
         "dem_std": "953 м",
         "baro_altitude": 5500.0,
-        "flight_duration": 50.0,
+        "flight_duration": 250.0,
+        "azimuth_deg": 90,
+        "speed_ms": 50,
+        "noise_std": 1.0,
     },
     "ural": {
         "name": "Урал — горный хребет",
-        "description": "Пологий хребет 1000–1500 м, σ=495 м",
+        "description": "Пологий хребет 1000–1500 м, σ=495 м — 12 км на N вдоль хребта, шум 3 м",
         "dem_path": "data/dem/ural.tif",
         "dem_name": "Урал",
         "dem_size": "400×400",
         "dem_std": "495 м",
         "baro_altitude": 2000.0,
-        "flight_duration": 40.0,
+        "flight_duration": 200.0,
+        "azimuth_deg": 0,
+        "speed_ms": 60,
+        "noise_std": 3.0,
     },
     "altai": {
         "name": "Алтай — плато и пики",
-        "description": "Высокое плато 2000 м + пики до 3500 м, σ=817 м",
+        "description": "Плато 2000 м + пики 3500 м, σ=817 м — 17.5 км на SE",
         "dem_path": "data/dem/altai.tif",
         "dem_name": "Алтай",
         "dem_size": "400×400",
         "dem_std": "817 м",
         "baro_altitude": 4000.0,
-        "flight_duration": 50.0,
+        "flight_duration": 250.0,
+        "azimuth_deg": 135,
+        "speed_ms": 70,
+        "noise_std": 1.5,
     },
     "crimea": {
         "name": "Крым — горы и море",
-        "description": "Прибрежный гребень 1000 м, σ=326 м",
+        "description": "Прибрежный гребень 1000 м, σ=326 м — 8 км на S от гор к морю, шум 3 м",
         "dem_path": "data/dem/crimea.tif",
         "dem_name": "Крым",
         "dem_size": "400×400",
         "dem_std": "326 м",
         "baro_altitude": 1500.0,
-        "flight_duration": 40.0,
+        "flight_duration": 200.0,
+        "azimuth_deg": 180,
+        "speed_ms": 40,
+        "noise_std": 3.0,
     },
     "siberia": {
         "name": "Западная Сибирь — равнина",
-        "description": "Плоский рельеф 30–86 м, σ=17 м",
+        "description": "Плоский рельеф 30–86 м, σ=17 м — 24 км, TERCOM должен сорваться",
         "dem_path": "data/dem/siberia.tif",
         "dem_name": "Сибирская равнина",
         "dem_size": "400×400",
         "dem_std": "17 м",
         "baro_altitude": 300.0,
-        "flight_duration": 40.0,
+        "flight_duration": 300.0,
+        "azimuth_deg": 45,
+        "speed_ms": 80,
+        "noise_std": 1.0,
     },
     "sakhalin": {
         "name": "Сахалин — островные сопки",
-        "description": "Узкий остров с сопками 500–800 м, σ=358 м",
+        "description": "Узкий остров с сопками 500–800 м, σ=358 м — 10 км вдоль оси",
         "dem_path": "data/dem/sakhalin.tif",
         "dem_name": "Сахалин",
         "dem_size": "400×400",
         "dem_std": "358 м",
         "baro_altitude": 1200.0,
-        "flight_duration": 40.0,
+        "flight_duration": 200.0,
+        "azimuth_deg": 90,
+        "speed_ms": 50,
+        "noise_std": 2.5,
     },
     "karelia": {
         "name": "Карелия — холмы и озёра",
-        "description": "Мягкие холмы 100–300 м, σ=85 м",
+        "description": "Мягкие холмы 100–300 м, σ=85 м — 8 км на W через озёра, шум 3 м",
         "dem_path": "data/dem/karelia.tif",
         "dem_name": "Карелия",
         "dem_size": "400×400",
         "dem_std": "85 м",
         "baro_altitude": 500.0,
-        "flight_duration": 40.0,
+        "flight_duration": 200.0,
+        "azimuth_deg": 270,
+        "speed_ms": 40,
+        "noise_std": 3.0,
     },
     "primorye": {
         "name": "Приморье — сопки и побережье",
-        "description": "Холмистый рельеф 300–800 м, σ=222 м",
+        "description": "Холмистый рельеф 300–800 м, σ=222 м — 15 км на SW вдоль побережья",
         "dem_path": "data/dem/primorye.tif",
         "dem_name": "Приморье",
         "dem_size": "400×400",
         "dem_std": "222 м",
         "baro_altitude": 1200.0,
-        "flight_duration": 40.0,
+        "flight_duration": 250.0,
+        "azimuth_deg": 225,
+        "speed_ms": 60,
+        "noise_std": 1.5,
     },
 }
 
@@ -205,12 +235,22 @@ class SimulationRunner:
             raise FileNotFoundError(f"DEM not found: {self.dem_path}")
         self.baro_altitude = info["baro_altitude"]
         self.flight_duration = info["flight_duration"]
+        self.azimuth_deg = info.get("azimuth_deg", 45)
+        self.speed_ms = info.get("speed_ms", 60)
+        self.noise_std = info.get("noise_std", 1.0)
 
-    def run(self) -> Generator[Dict[str, Any], None, None]:
+    def run(self, overrides: dict = None) -> Generator[Dict[str, Any], None, None]:
         cfg = Config.default()
-        cfg.noise_std = 1.0
+        info = SCENARIOS[self.scenario_id]
+        cfg.noise_std = info.get("noise_std", 1.0)
+        cfg.default_azimuth = info.get("azimuth_deg", 45)
+        cfg.default_speed = info.get("speed_ms", 60)
         cfg.flight_duration = self.flight_duration
-        cfg.baro_altitude = SCENARIOS[self.scenario_id]["baro_altitude"]
+        cfg.baro_altitude = info["baro_altitude"]
+        if overrides:
+            for k, v in overrides.items():
+                if hasattr(cfg, k):
+                    setattr(cfg, k, v)
 
         dem = DEMLoader(self.dem_path)
         bounds = dem.bounds
@@ -222,7 +262,7 @@ class SimulationRunner:
             start_lon=center_lon,
             azimuth_deg=cfg.default_azimuth,
             speed_ms=cfg.default_speed,
-            duration_s=self.flight_duration,
+            duration_s=cfg.flight_duration,
         )
 
         grid = dem.get_elevation_grid()
@@ -303,6 +343,9 @@ class SimulationRunner:
             "nmea_shown": len(alts),
             "nmea_freq_hz": cfg.nmea_freq_hz,
             "flight_duration_s": f"{params.duration_s:.0f}",
+            "noise_std_m": cfg.noise_std,
+            "speed_ms": params.speed_ms,
+            "azimuth_deg": params.azimuth_deg,
         })
 
         window = cfg.window_size
