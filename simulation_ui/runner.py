@@ -146,6 +146,20 @@ def _to_serializable(v):
     return v
 
 
+def _deep_serializable(d):
+    if isinstance(d, dict):
+        return {k: _deep_serializable(v) for k, v in d.items()}
+    if isinstance(d, (list, tuple)):
+        return [_deep_serializable(v) for v in d]
+    if isinstance(d, np.floating):
+        return float(d)
+    if isinstance(d, np.integer):
+        return int(d)
+    if isinstance(d, np.ndarray):
+        return d.tolist()
+    return d
+
+
 def _make_step(step_idx: int, svg: str, metrics: dict) -> Dict[str, Any]:
     t = STEP_TEXTS[step_idx]
     safe_metrics = {k: _to_serializable(v) for k, v in metrics.items()}
@@ -444,7 +458,7 @@ class SimulationRunner:
             "прогноз_отката": "нет" if rolling_corr > 0.7 else "да",
         })
 
-        r_scale = 1.0 if best_fine and best_fine.correlation > 0.8 else 5.0 if best_fine and best_fine.correlation < 0.5 else 3.0
+        r_scale = 1.0 if best_fine and best_fine.correlation >= 0.8 else 5.0 if best_fine and best_fine.correlation < 0.5 else 3.0
         base_r = max((1.0 - best_fine.correlation) * 200.0, 20.0) if best_fine else 100.0
 
         yield _make_step(12, svg_r_matrix(base_r, r_scale), {
@@ -545,23 +559,42 @@ class SimulationRunner:
             except Exception:
                 est_elevations.append(0.0)
 
+        true_elevations = []
+        for lat, lon in zip(true_lats, true_lons):
+            try:
+                true_elevations.append(float(dem.elevation(lat, lon)))
+            except Exception:
+                true_elevations.append(0.0)
+
+        first_est = estimates[0] if estimates else None
+        first_est_idx = estimate_indices[0] if estimate_indices else None
+
         trajectory_data = {
             "trajectory": {
                 "true_path": [[round(float(lat), 6), round(float(lon), 6)] for lat, lon in zip(true_lats, true_lons)],
                 "estimates": [
                     {
-                        "lat": e.position_lat, "lon": e.position_lon,
-                        "correlation": e.correlation,
+                        "lat": float(e.position_lat), "lon": float(e.position_lon),
+                        "correlation": float(e.correlation),
                         "quality": e.quality.get("quality", "unknown") if e.quality else "unknown",
-                        "speed_ms": e.speed_ms, "azimuth_deg": e.azimuth_deg,
-                        "elevation": elev, "nmea_index": int(idx),
+                        "speed_ms": float(e.speed_ms), "azimuth_deg": float(e.azimuth_deg),
+                        "elevation": float(elev), "nmea_index": int(idx),
                     }
                     for e, elev, idx in zip(estimates, est_elevations, estimate_indices)
                 ],
                 "filtered_path": [[round(float(lat), 6), round(float(lon), 6)] for lat, lon in zip(filt_lats, filt_lons)],
-                "start": {"lat": true_lats[0], "lon": true_lons[0]},
-                "end": {"lat": true_lats[-1], "lon": true_lons[-1]},
+                "start": {"lat": float(true_lats[0]), "lon": float(true_lons[0])},
+                "end": {"lat": float(true_lats[-1]), "lon": float(true_lons[-1])},
                 "n_nmea": len(nmea_lines),
+                "true_azimuth_deg": cfg.default_azimuth,
+                "true_speed_ms": cfg.default_speed,
+                "first_estimate": {
+                    "lat": float(first_est.position_lat),
+                    "lon": float(first_est.position_lon),
+                    "nmea_index": int(first_est_idx),
+                } if first_est else None,
+                "elevation_profile": true_elevations,
+                "buffer_window_size": cfg.window_size,
             },
         }
-        yield _make_step(18, "", trajectory_data)
+        yield _make_step(18, "", _deep_serializable(trajectory_data))

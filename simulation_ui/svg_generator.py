@@ -436,9 +436,9 @@ def svg_eskf_error(errors: List[float], title: str, color: str = "#6ea8fe") -> s
     parts.append(f'<polyline points="{" ".join(trend_pts)}" fill="none" stroke="#dee2e6" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>')
     start_v, end_v = errors[0], errors[-1]
     if end_v < start_v:
-        parts.append(f'<text x="360" y="36" fill="#75b798" font-size="9" font-family="monospace">✓ схождение: {end_v:.0f} → {start_v:.0f}м</text>')
+        parts.append(f'<text x="360" y="36" fill="#75b798" font-size="9" font-family="monospace">✓ схождение: {start_v:.0f} → {end_v:.0f}м</text>')
     else:
-        parts.append(f'<text x="360" y="36" fill="#ea868f" font-size="9" font-family="monospace">✗ расхождение: {end_v:.0f}м</text>')
+        parts.append(f'<text x="360" y="36" fill="#ea868f" font-size="9" font-family="monospace">✗ расхождение: {start_v:.0f} → {end_v:.0f}м</text>')
     parts.append('<text x="250" y="208" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">шаг</text>')
     parts.append('<text x="26" y="14" fill="#adb5bd" font-size="7" text-anchor="end" font-family="monospace">м</text>')
     return _svg_wrap("".join(parts), 220)

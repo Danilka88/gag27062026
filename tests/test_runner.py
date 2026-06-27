@@ -85,6 +85,34 @@ def test_profile_has_reference():
     assert 'NCC' in step8['svg']
 
 
+def test_trajectory_map_step_has_valid_data():
+    from simulation_ui.runner import SimulationRunner
+    runner = SimulationRunner('synthetic')
+    steps = list(runner.run())
+    traj_step = next(s for s in steps if s['id'] == 'trajectory-map')
+    assert 'metrics' in traj_step
+    traj = traj_step['metrics'].get('trajectory')
+    assert traj is not None
+    assert 'true_path' in traj
+    assert len(traj['true_path']) > 0
+    assert all(len(p) == 2 for p in traj['true_path'])
+    assert 'estimates' in traj
+    assert len(traj['estimates']) > 0
+    for e in traj['estimates']:
+        assert isinstance(e['lat'], (int, float))
+        assert isinstance(e['lon'], (int, float))
+        assert isinstance(e['correlation'], (int, float))
+        assert isinstance(e['speed_ms'], (int, float))
+        assert isinstance(e['azimuth_deg'], (int, float))
+        assert isinstance(e['elevation'], (int, float))
+        assert isinstance(e['nmea_index'], int)
+    assert 'filtered_path' in traj
+    assert len(traj['filtered_path']) >= 0
+    assert 'start' in traj and 'lat' in traj['start'] and 'lon' in traj['start']
+    assert 'end' in traj and 'lat' in traj['end'] and 'lon' in traj['end']
+    assert traj['n_nmea'] > 0
+
+
 def test_improvement_steps_present():
     from simulation_ui.runner import SimulationRunner
     runner = SimulationRunner('synthetic')

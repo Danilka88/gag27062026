@@ -20,6 +20,7 @@ const mapState = {
     activeTrail: null,
     errorLines: null,
     layers: {},
+    elevationChart: null,
 };
 
 const SPEEDS = [1, 2, 5, 10];
@@ -195,10 +196,12 @@ function updateStepList() {
 }
 
 function renderCurrentStep() {
+    cleanupMap();
     const step = state.steps[state.currentIndex];
     if (!step) return;
     const display = document.getElementById('step-display');
-    const traj = step.metrics && step.metrics.trajectory;
+    const isTrajStep = step.id === 'trajectory-map';
+    const traj = isTrajStep ? (step.metrics && step.metrics.trajectory) : null;
 
     display.innerHTML = `
         <div class="step-header phase-${step.phase}">
@@ -213,7 +216,7 @@ function renderCurrentStep() {
             <div class="label">🎯 Задача</div>
             ${step.task}
         </div>
-        ${traj ? `
+        ${isTrajStep ? `
         <div id="trajectory-map" class="map-container"></div>
         <div class="map-bottom-bar">
             <input type="range" id="timeline-slider" min="0" max="100" value="0" class="timeline-slider">
@@ -222,6 +225,10 @@ function renderCurrentStep() {
                 <span id="map-pos-info" class="text-secondary-emphasis small ms-2">Точка 0/0</span>
                 <span id="map-params-info" class="text-light small ms-auto">—</span>
             </div>
+        </div>
+        <div class="elevation-chart-wrapper">
+            <div class="elevation-chart-header">Профиль высот <span id="elevation-chart-info" class="elevation-chart-info"></span></div>
+            <canvas id="elevation-chart"></canvas>
         </div>` : `
         <div class="svg-container" id="svg-container">
             ${step.svg}
@@ -236,7 +243,7 @@ function renderCurrentStep() {
                 </div>
             `).join('')}
         </div>
-        ${step.metrics && !step.metrics.trajectory ? `
+        ${!isTrajStep && step.metrics ? `
         <div class="metrics-grid">
             ${Object.entries(step.metrics).filter(([k]) => k !== 'trajectory').map(([k, v]) => `
                 <div class="metric-card">
@@ -246,14 +253,15 @@ function renderCurrentStep() {
             `).join('')}
         </div>` : ''}`;
 
-    if (traj) {
+    if (isTrajStep) {
         if (traj && traj.true_path && traj.true_path.length > 0) {
             initTrajectoryMap(traj);
+            initElevationChart(traj);
         } else {
-            document.getElementById('trajectory-map').innerHTML = '<div class="text-center py-5 text-secondary-emphasis">Нет данных траектории</div>';
+            document.getElementById('trajectory-map').innerHTML = '<div class="text-center py-5 text-secondary-emphasis">Нет данных траектории — TERCOM не нашёл совпадение</div>';
         }
-        const svgEl = document.getElementById('trajectory-map');
-        if (svgEl) svgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const mapEl = document.getElementById('trajectory-map');
+        if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
         const svgEl = document.getElementById('svg-container');
         if (svgEl) svgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -343,6 +351,10 @@ function setSpeed(mult) {
         if (state.timer) { clearTimeout(state.timer); state.timer = null; }
         scheduleNext();
     }
+    if (mapState.animPlaying) {
+        if (mapState.animTimer) { clearTimeout(mapState.animTimer); mapState.animTimer = null; }
+        stepMapAnimation();
+    }
 }
 
 async function runAiAnalysis() {
@@ -405,8 +417,8 @@ ${(result.suggestions || []).slice(0, 4).map((s, i) =>
             svg: svg,
         };
 
-        state.steps.push(aiStep);
-        state.currentIndex = state.steps.length - 1;
+        state.steps.splice(17, 0, aiStep);
+        state.currentIndex = 17;
         state.placeholders = Math.max(state.placeholders, state.steps.length);
         renderCurrentStep();
         updateProgress();
@@ -442,7 +454,6 @@ function initTrajectoryMap(data) {
     mapState.instance = map;
 
     const trueLatLngs = data.true_path.map(p => [p[0], p[1]]);
-    const estLatLngs = data.estimates.map(e => [e.lat, e.lon]);
     const filtLatLngs = data.filtered_path.map(p => [p[0], p[1]]);
 
     const fullTrail = L.polyline(trueLatLngs, {
@@ -496,6 +507,15 @@ function initTrajectoryMap(data) {
             radius: 8, color: '#ea868f', fillColor: '#ea868f', fillOpacity: 0.9, weight: 2,
         }).bindPopup('<div class="popup-content"><b>Финиш</b></div>', { className: 'leaflet-popup-dark' }).addTo(map);
     }
+    if (data.first_estimate) {
+        const fe = data.first_estimate;
+        L.circleMarker([fe.lat, fe.lon], {
+            radius: 12, color: '#6ea8fe', fillColor: '#6ea8fe', fillOpacity: 0.15, weight: 2,
+        }).addTo(map);
+        L.circleMarker([fe.lat, fe.lon], {
+            radius: 6, color: '#6ea8fe', fillColor: '#6ea8fe', fillOpacity: 0.9, weight: 2,
+        }).bindPopup('<div class="popup-content"><b>Первая оценка TERCOM</b><br>NMEA #' + fe.nmea_index + '</div>', { className: 'leaflet-popup-dark' }).addTo(map);
+    }
 
     const legend = L.control({ position: 'bottomleft' });
     legend.onAdd = () => {
@@ -505,7 +525,9 @@ function initTrajectoryMap(data) {
             <div class="legend-row"><span class="legend-dot" style="background:#6ea8fe"></span> Оценки TERCOM</div>
             <div class="legend-row"><span class="legend-line" style="border-color:#b580d1"></span> ESKF filtered</div>
             <div class="legend-row"><span class="legend-dot" style="background:#ffda6a"></span> Marginal</div>
-            <div class="legend-row"><span class="legend-dot" style="background:#ea868f"></span> Poor</div>`;
+            <div class="legend-row"><span class="legend-dot" style="background:#ea868f"></span> Poor</div>
+            <div class="legend-row"><span class="legend-dot" style="background:#6ea8fe;width:12px;height:12px;opacity:0.4"></span> Первая оценка</div>
+            <div class="legend-row"><span class="legend-line" style="border-color:#6ea8fe"></span> Буфер NMEA</div>`;
         return div;
     };
     legend.addTo(map);
@@ -528,12 +550,26 @@ function updateTrajectoryFrame(pos) {
     if (!data) return;
     const active = mapState.layers.activeLayer;
     const errorLines = mapState.layers.errorLines;
-    active.clearLayers();
-    errorLines.clearLayers();
+    if (active) active.clearLayers();
+    if (errorLines) errorLines.clearLayers();
 
     const trail = data.true_path.slice(0, pos + 1).map(p => [p[0], p[1]]);
     if (trail.length > 1) {
         L.polyline(trail, { color: '#75b798', weight: 3, opacity: 0.9 }).addTo(active);
+    }
+
+    /* buffer window segment on map */
+    const ws = data.buffer_window_size || 200;
+    const bufStart = Math.max(0, pos - ws + 1);
+    const bufEnd = Math.min(pos, data.true_path.length - 1);
+    const bufTrail = data.true_path.slice(bufStart, bufEnd + 1).map(p => [p[0], p[1]]);
+    if (bufTrail.length > 1) {
+        const isFull = pos >= ws;
+        L.polyline(bufTrail, {
+            color: isFull ? '#6ea8fe' : '#ffda6a',
+            weight: isFull ? 4 : 3,
+            opacity: isFull ? 0.6 : 0.4,
+        }).addTo(active);
     }
 
     const visibleEst = data.estimates.filter(e => e.nmea_index <= pos);
@@ -567,19 +603,26 @@ function updateTrajectoryFrame(pos) {
         }
     }
 
+    const truePt = pos < data.true_path.length ? data.true_path[pos] : null;
     const nearEst = data.estimates.filter(e => e.nmea_index <= pos);
     const lastEst = nearEst.length > 0 ? nearEst[nearEst.length - 1] : null;
     const infoEl = document.getElementById('map-params-info');
-    if (lastEst) {
-        infoEl.innerHTML = `Корр: ${lastEst.correlation.toFixed(3)} | Ск: ${lastEst.speed_ms.toFixed(0)} м/с | Аз: ${lastEst.azimuth_deg.toFixed(0)}° | Выс: ${lastEst.elevation.toFixed(0)} м | Кач: ${lastEst.quality}`;
-    } else {
-        infoEl.textContent = '—';
+    if (infoEl) {
+        const coordStr = truePt ? `${truePt[0].toFixed(6)}, ${truePt[1].toFixed(6)}` : '—';
+        if (lastEst) {
+            infoEl.textContent = `${coordStr} | Корр: ${lastEst.correlation.toFixed(3)} | Ск: ${lastEst.speed_ms.toFixed(0)} м/с | Аз: ${lastEst.azimuth_deg.toFixed(0)}° | Выс: ${lastEst.elevation.toFixed(0)} м | Кач: ${lastEst.quality}`;
+        } else {
+            infoEl.textContent = `${coordStr} | Корр: — | Ск: ${data.true_speed_ms || '—'} м/с | Аз: ${data.true_azimuth_deg || '—'}° | Выс: — | Кач: —`;
+        }
     }
 
     const slider = document.getElementById('timeline-slider');
     if (slider) slider.value = pos;
 
-    document.getElementById('map-pos-info').textContent = `Точка ${pos}/${data.true_path.length - 1}`;
+    const posInfo = document.getElementById('map-pos-info');
+    if (posInfo) posInfo.textContent = `Точка ${pos}/${data.true_path.length - 1}`;
+
+    updateElevationChart(pos);
 }
 
 function toggleMapAnimation() {
@@ -594,7 +637,8 @@ function playMapAnimation() {
         mapState.animPos = 0;
     }
     mapState.animPlaying = true;
-    document.getElementById('map-play-btn').textContent = '⏸ Пауза';
+    const playBtn = document.getElementById('map-play-btn');
+    if (playBtn) playBtn.textContent = '⏸ Пауза';
     stepMapAnimation();
 }
 
@@ -604,7 +648,8 @@ function pauseMapAnimation() {
         clearTimeout(mapState.animTimer);
         mapState.animTimer = null;
     }
-    document.getElementById('map-play-btn').textContent = '▶ Играть';
+    const playBtn = document.getElementById('map-play-btn');
+    if (playBtn) playBtn.textContent = '▶ Играть';
 }
 
 function stepMapAnimation() {
@@ -612,13 +657,20 @@ function stepMapAnimation() {
     const data = mapState.data;
     if (mapState.animPos >= data.true_path.length - 1) {
         pauseMapAnimation();
-        document.getElementById('map-play-btn').textContent = '▶ Играть';
+        const playBtn = document.getElementById('map-play-btn');
+        if (playBtn) playBtn.textContent = '▶ Играть';
         return;
     }
-    mapState.animPos++;
+    const firstEstIdx = data.first_estimate ? data.first_estimate.nmea_index : -1;
+    const skip = (firstEstIdx > 0 && mapState.animPos < firstEstIdx)
+        ? Math.max(1, Math.floor(firstEstIdx / 25))
+        : 1;
+    const dist = Math.min(skip, data.true_path.length - 1 - mapState.animPos);
+    mapState.animPos += dist;
     updateTrajectoryFrame(mapState.animPos);
     const speed = state.speed;
-    mapState.animTimer = setTimeout(stepMapAnimation, 200 / speed);
+    const delay = (firstEstIdx > 0 && mapState.animPos < firstEstIdx) ? 80 : 200;
+    mapState.animTimer = setTimeout(stepMapAnimation, delay / speed);
 }
 
 function cleanupMap() {
@@ -631,8 +683,145 @@ function cleanupMap() {
         mapState.droneMarker.remove();
         mapState.droneMarker = null;
     }
+    if (mapState.elevationChart) {
+        mapState.elevationChart.destroy();
+        mapState.elevationChart = null;
+    }
     mapState.layers = {};
     mapState.data = null;
+}
+
+/* Crosshair + buffer window plugin for elevation chart */
+const chartPlugins = {
+    id: 'chartExtras',
+    afterDraw(chart) {
+        const xAxis = chart.scales.x;
+        if (!xAxis) return;
+        const yAxis = chart.scales.y;
+        const ctx = chart.ctx;
+        /* buffer window */
+        const bufStart = chart.bufStart;
+        const bufEnd = chart.bufEnd;
+        if (bufStart !== undefined && bufEnd !== undefined) {
+            const x0 = xAxis.getPixelForValue(bufStart);
+            const x1 = xAxis.getPixelForValue(bufEnd);
+            ctx.save();
+            const isFull = chart.bufferFull;
+            ctx.fillStyle = isFull
+                ? 'rgba(110, 168, 254, 0.08)'
+                : 'rgba(255, 218, 106, 0.06)';
+            ctx.fillRect(x0, yAxis.top, x1 - x0, yAxis.bottom - yAxis.top);
+            ctx.strokeStyle = isFull
+                ? 'rgba(110, 168, 254, 0.25)'
+                : 'rgba(255, 218, 106, 0.18)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.strokeRect(x0, yAxis.top, x1 - x0, yAxis.bottom - yAxis.top);
+            ctx.restore();
+        }
+        /* crosshair */
+        if (chart.crosshairPos === undefined) return;
+        const x = xAxis.getPixelForValue(chart.crosshairPos);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, yAxis.top);
+        ctx.lineTo(x, yAxis.bottom);
+        ctx.strokeStyle = '#6ea8fe';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.restore();
+    }
+};
+
+function initElevationChart(data) {
+    const canvas = document.getElementById('elevation-chart');
+    if (!canvas) return;
+    if (mapState.elevationChart) {
+        mapState.elevationChart.destroy();
+    }
+    const ele = data.elevation_profile || [];
+    const labels = ele.map((_, i) => i);
+    const firstIdx = data.first_estimate ? data.first_estimate.nmea_index : null;
+    const datasets = [
+        {
+            label: 'Высота рельефа',
+            data: ele,
+            borderColor: '#75b798',
+            backgroundColor: 'rgba(117, 183, 152, 0.08)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 1.5,
+        },
+    ];
+    if (firstIdx !== null && ele[firstIdx] !== undefined) {
+        datasets.push({
+            label: 'Первая оценка',
+            data: ele.map((v, i) => i === firstIdx ? v : undefined),
+            borderColor: '#6ea8fe',
+            backgroundColor: '#6ea8fe',
+            pointRadius: 6,
+            pointStyle: 'circle',
+            showLine: false,
+        });
+    }
+    mapState.elevationChart = new Chart(canvas, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: '#2b3035',
+                    titleColor: '#dee2e6',
+                    bodyColor: '#adb5bd',
+                    borderColor: '#495057',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: ctx => `${ctx.parsed.y.toFixed(0)} м`,
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    display: true,
+                    ticks: { color: '#6c757d', maxTicksLimit: 10, font: { size: 10 } },
+                    grid: { color: 'rgba(73, 80, 87, 0.3)' },
+                },
+                y: {
+                    display: true,
+                    ticks: { color: '#6c757d', font: { size: 10 }, callback: v => v.toFixed(0) + ' м' },
+                    grid: { color: 'rgba(73, 80, 87, 0.3)' },
+                },
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false,
+            },
+        },
+        plugins: [chartPlugins],
+    });
+    mapState.elevationChart.windowSize = data.buffer_window_size || 200;
+}
+
+function updateElevationChart(pos) {
+    if (!mapState.elevationChart) return;
+    const ws = mapState.elevationChart.windowSize || 200;
+    const total = mapState.elevationChart.data.labels.length;
+    mapState.elevationChart.bufStart = Math.max(0, pos - ws + 1);
+    mapState.elevationChart.bufEnd = Math.min(pos, total - 1);
+    mapState.elevationChart.bufferFull = pos >= ws;
+    mapState.elevationChart.crosshairPos = pos;
+    mapState.elevationChart.draw();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
