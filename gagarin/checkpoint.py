@@ -5,7 +5,6 @@ import numpy as np
 from gagarin.dem_loader import DEMLoader
 from gagarin.config import Config
 from gagarin.geo_utils import offset_coords, offset_coords_batch, haversine_m
-from gagarin.eskf import ErrorStateKalmanFilter
 
 
 @dataclass
@@ -200,36 +199,24 @@ def _eskf_filter_estimates(
             e.filtered_lon = e.position_lon
         return estimates, indices
 
-    eskf = ErrorStateKalmanFilter(dt=0.1)
-    eskf.set_position(estimates[0].position_lat, estimates[0].position_lon)
-    az_rad = np.radians(estimates[0].azimuth_deg)
-    eskf.vx = estimates[0].speed_ms * np.sin(az_rad)
-    eskf.vy = estimates[0].speed_ms * np.cos(az_rad)
     estimates[0].filtered_lat = estimates[0].position_lat
     estimates[0].filtered_lon = estimates[0].position_lon
 
     for i in range(1, len(estimates)):
         dt = max(0.01, estimates[i].timestamp - estimates[i - 1].timestamp)
-        eskf.dt = dt
-
         dr_dist = dt * estimates[i].speed_ms
         az_rad = np.radians(estimates[i].azimuth_deg)
-        dr_lat, dr_lon = offset_coords(eskf.lat, eskf.lon, dr_dist, az_rad)
-        eskf.set_position(dr_lat, dr_lon)
-        eskf.vx = estimates[i].speed_ms * np.sin(az_rad)
-        eskf.vy = estimates[i].speed_ms * np.cos(az_rad)
-
-        eskf.predict()
+        dr_lat, dr_lon = offset_coords(
+            estimates[i - 1].filtered_lat,
+            estimates[i - 1].filtered_lon,
+            dr_dist, az_rad,
+        )
 
         discr = max(estimates[i].discrimination_ratio, 1.0)
-        r_scale = max(1.0, 10.0 / max(discr - 1.0, 0.1))
-        R_pos = np.eye(2) * (5.0 * r_scale)
+        w = min(1.0, max(0.0, (discr - 1.0) / 10.0))
 
-        eskf.update_position(estimates[i].position_lat, estimates[i].position_lon, R_pos)
-        eskf.reset()
-        state = eskf.get_state()
-        estimates[i].filtered_lat = state["lat"]
-        estimates[i].filtered_lon = state["lon"]
+        estimates[i].filtered_lat = dr_lat + w * (estimates[i].position_lat - dr_lat)
+        estimates[i].filtered_lon = dr_lon + w * (estimates[i].position_lon - dr_lon)
 
     return estimates, indices
 

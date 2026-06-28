@@ -70,7 +70,7 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 | **eskf** | `eskf.py` | `ErrorStateKalmanFilter` | 6D-фильтр. solve vs inv. Degree bug fixed. |
 | **pipeline** | `pipeline.py` | `NavigationPipeline` | Оркестратор: буфер→корреляция→оценка→dead reckoning→ESKF. |
 | **viz/mission** | `viz/mission.py` | `mission_viewer()` | 3-панельный HTML-вьювер для pre-flight mission package: карта, профиль информативности, fingerprint-матрица. |
-| **checkpoint** | `checkpoint.py` | `CheckpointResult`, `WindowEstimate`, `run_tercom()`, `_mad()` (mean‑sub), `_search_position_grid()` (5-tuple), `_search_speed()`, `_process_windows()` (4 gates), `_azimuth_consensus()`, `_ransac_filter()`, `_ncc_adaptive()`, `_classify_quality()` (+mad), `_eskf_filter_estimates()` (DR-based) | TERCOM-коррекция по файлу высот. MAD+NCC гибрид, minima ratio, pre‑rejection gates, ESKF с DR-пропагацией. |
+| **checkpoint** | `checkpoint.py` | `CheckpointResult`, `WindowEstimate`, `run_tercom()`, `_mad()` (mean‑sub), `_search_position_grid()` (5-tuple), `_search_speed()`, `_process_windows()` (4 gates), `_azimuth_consensus()`, `_ransac_filter()`, `_ncc_adaptive()`, `_classify_quality()` (+mad), `_eskf_filter_estimates()` (DR+weight) | TERCOM-коррекция по файлу высот. MAD+NCC гибрид, minima ratio, pre‑rejection gates, DR-пропагация + weighted correction. |
 | **data_generator** | `data_generator.py` | `DataGenerator` | Симулирует полёт: NMEA строки с шумом. |
 | **cli** | `cli.py` | CLI (click) | Точка входа: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `analyze`. |
 | **simulation_ui** | `simulation_ui/main.py` | FastAPI SSE endpoint | Сервер для интерактивной симуляции TERCOM в реальном времени. Endpoint: `GET /api/simulate/{id}` → SSE stream из 14 шагов. |
@@ -86,8 +86,7 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 - **Mean‑subtracted MAD**: вычитание среднего из обоих массивов перед MAD — устраняет baro-смещение. Raw MAD = 500 м, mean‑sub = 0.9 м на правильной позиции.
 - **Minima ratio = `second_best_mad / best_mad`**: адаптивный радиус исключения `min(2, pixel_radius−1)`. Выше = лучше (good ≥ 3.0).
 - **Pre‑rejection gates**: `p2v < 5`, `mad > 30`, `ncc < 0.3`, `discr < 1.0` — консервативные пороги, ни одна корректная оценка не отбрасывается.
-- **ESKF DR-пропагация**: `set_position(offset_coords(lat, lon, dt*speed, azimuth))` перед `predict()` — без этого `predict()` не двигает состояние (dx=0 после reset).
-- **ESKF adaptive R**: `R_pos ∝ 1/(discr−1)`: discr=1.1 → R×100, discr=11 → R×1.
+- **DR-пропагация + weighted correction**: `_eskf_filter_estimates` больше не использует ESKF (Kalman gain → 0 при dt=3–4 с). Вместо этого: DR от предыдущей filtered позиции + линейная коррекция с весом `w = clamp((discr−1)/10, 0, 1)`.
 - **Accuracy после 4 фаз**: 4/8 правильных азимутов. Средняя ошибка: raw 254 м → filtered 156 м (−39%). Crimea — единственная регрессия (неверный азимут).
 
 ## Ключевые решения (оригинальные)
