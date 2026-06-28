@@ -73,10 +73,10 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 | **checkpoint** | `checkpoint.py` | `CheckpointResult`, `WindowEstimate`, `run_tercom()`, `_mad()` (mean‑sub), `_search_position_grid()` (5-tuple), `_search_speed()`, `_process_windows()` (4 gates), `_azimuth_consensus()`, `_ransac_filter()`, `_ncc_adaptive()`, `_classify_quality()` (+mad), `_eskf_filter_estimates()` (DR+weight) | TERCOM-коррекция по файлу высот. MAD+NCC гибрид, minima ratio, pre‑rejection gates, DR-пропагация + weighted correction. |
 | **data_generator** | `data_generator.py` | `DataGenerator` | Симулирует полёт: NMEA строки с шумом. |
 | **cli** | `cli.py` | CLI (click) | Точка входа: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `analyze`. |
-| **simulation_ui** | `simulation_ui/main.py` | FastAPI SSE endpoint | Сервер для интерактивной симуляции TERCOM в реальном времени. Endpoint: `GET /api/simulate/{id}` → SSE stream из 14 шагов. |
+| **simulation_ui** | `simulation_ui/main.py` | FastAPI SSE endpoint | Сервер для интерактивной симуляции TERCOM в реальном времени. Endpoint: `GET /api/simulate/{id}` → SSE stream из 27 шагов. |
 | **simulation_ui/runner** | `simulation_ui/runner.py` | `SimulationRunner` | Оркестратор: загружает DEM, гоняет pipeline, yield-ит 27 StepData-словарей (0–26). Каждый шаг содержит `{id, number, phase, title, svg, metrics, explanation}`. Шаг 26 — сводная тепловая карта всех метрик полёта (NCC, quality, error, lost segments). Шаг 18 — trajectory data в JSON для карты. |
 | **simulation_ui/svg_generator** | `simulation_ui/svg_generator.py` | `svg_dem()`, `svg_nmea()`, `svg_buffer()`, `svg_profile()`, `svg_heatmap()`, `svg_ncc_bar()`, `svg_lag()`, `svg_trajectory()`, `svg_eskf_error()`, `svg_quality()`, `svg_result()`, `svg_corridor()`, `svg_fingerprints()` | Генерация динамических SVG из реальных данных pipeline-прогона. Bootstrap dark theme цвета, 500px viewBox. |
-| **simulation_ui/texts** | `simulation_ui/texts.py` | `STEPS` (list[dict]) | Тексты пояснений для каждого из 14 шагов: `title`, `subtitle`, `explanation`, `task`, `why` (3 карточки), `tags`. |
+| **simulation_ui/texts** | `simulation_ui/texts.py` | `STEPS` (list[dict]) | Тексты пояснений для каждого из 27 шагов: `title`, `subtitle`, `explanation`, `task`, `why` (3 карточки), `tags`. |
 | **simulation_ui/static** | `simulation_ui/static/app.js` | SSE-клиент, step buffer, auto-play, speed control | SPA: выбор сценария → SSE стрим → пошаговый просмотр с авто-проигрыванием (×1–×10). |
 | **simulation_ui/static** | `simulation_ui/static/style.css` | Bootstrap dark theme + кастомные классы | Анимации, progress bar, stepper, phase-цвета, why-grid. |
 
@@ -120,7 +120,7 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 
 ## Производительность
 
-- 48 тестов за ~0.3 с
+- 53 теста за ~0.3 с
 - Цель RPi: <100 ms/search через JIT
 - ESKF predict/update/reset: << 1 ms
 
