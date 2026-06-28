@@ -5,6 +5,7 @@ import numpy as np
 from gagarin.dem_loader import DEMLoader
 from gagarin.config import Config
 from gagarin.geo_utils import offset_coords, offset_coords_batch, haversine_m
+from gagarin.eskf import ErrorStateKalmanFilter
 
 
 @dataclass
@@ -188,6 +189,49 @@ def _ransac_filter(
     if len(keep) < max(3, len(estimates) // 2):
         return estimates, indices
     return [estimates[i] for i in keep], [indices[i] for i in keep]
+
+
+def _eskf_filter_estimates(
+    estimates: list, indices: list,
+) -> tuple:
+    if len(estimates) < 2:
+        for e in estimates:
+            e.filtered_lat = e.position_lat
+            e.filtered_lon = e.position_lon
+        return estimates, indices
+
+    eskf = ErrorStateKalmanFilter(dt=0.1)
+    eskf.set_position(estimates[0].position_lat, estimates[0].position_lon)
+    az_rad = np.radians(estimates[0].azimuth_deg)
+    eskf.vx = estimates[0].speed_ms * np.sin(az_rad)
+    eskf.vy = estimates[0].speed_ms * np.cos(az_rad)
+    estimates[0].filtered_lat = estimates[0].position_lat
+    estimates[0].filtered_lon = estimates[0].position_lon
+
+    for i in range(1, len(estimates)):
+        dt = max(0.01, estimates[i].timestamp - estimates[i - 1].timestamp)
+        eskf.dt = dt
+
+        dr_dist = dt * estimates[i].speed_ms
+        az_rad = np.radians(estimates[i].azimuth_deg)
+        dr_lat, dr_lon = offset_coords(eskf.lat, eskf.lon, dr_dist, az_rad)
+        eskf.set_position(dr_lat, dr_lon)
+        eskf.vx = estimates[i].speed_ms * np.sin(az_rad)
+        eskf.vy = estimates[i].speed_ms * np.cos(az_rad)
+
+        eskf.predict()
+
+        discr = max(estimates[i].discrimination_ratio, 1.0)
+        r_scale = max(1.0, 10.0 / max(discr - 1.0, 0.1))
+        R_pos = np.eye(2) * (5.0 * r_scale)
+
+        eskf.update_position(estimates[i].position_lat, estimates[i].position_lon, R_pos)
+        eskf.reset()
+        state = eskf.get_state()
+        estimates[i].filtered_lat = state["lat"]
+        estimates[i].filtered_lon = state["lon"]
+
+    return estimates, indices
 
 
 def compute_true_trajectory(
@@ -507,6 +551,7 @@ def run_tercom(
             return [], [], heatmap
         consensus_az = _azimuth_consensus(estimates)
         estimates, indices = _ransac_filter(estimates, indices)
+        estimates, indices = _eskf_filter_estimates(estimates, indices)
         heatmap["best_azimuth"] = float(consensus_az)
         heatmap["best_speed"] = float(best_speed)
         return estimates, indices, heatmap
@@ -550,6 +595,7 @@ def run_tercom(
 
     estimates, indices, best_az, best_speed, _, _ = best
     estimates, indices = _ransac_filter(estimates, indices)
+    estimates, indices = _eskf_filter_estimates(estimates, indices)
     heatmap["best_azimuth"] = float(best_az)
     heatmap["best_speed"] = float(best_speed)
     return estimates, indices, heatmap
@@ -631,8 +677,8 @@ def collect_result(
     mad_values = []
 
     for i, est in enumerate(estimates):
-        elat = float(est.position_lat)
-        elon = float(est.position_lon)
+        elat = float(est.filtered_lat if est.filtered_lat is not None else est.position_lat)
+        elon = float(est.filtered_lon if est.filtered_lon is not None else est.position_lon)
         est_lats.append(elat)
         est_lons.append(elon)
         r, c = dem.lonlat_to_pixel(elat, elon)
