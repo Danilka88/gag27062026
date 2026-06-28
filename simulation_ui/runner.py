@@ -373,7 +373,7 @@ class SimulationRunner:
 
         yield _make_step(5, svg_heatmap(
             coarse_matrix, az_labels, sp_labels,
-            "TERCOM Coarse — глобальный поиск 36×10",
+            f"TERCOM Coarse — глобальный поиск {n_az}×{n_sp}",
             highlight_az=best_coarse.azimuth_deg if best_coarse else None,
             highlight_sp=best_coarse.speed_ms if best_coarse else None,
         ), {

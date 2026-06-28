@@ -41,6 +41,7 @@ class CheckpointResult:
     peak_to_valleys: Optional[List[float]] = None
     terrain_stds: Optional[List[float]] = None
     mad_values: Optional[List[float]] = None
+    roughness_diffs: Optional[List[float]] = None
 
     def to_dict(self) -> dict:
         def _py(v):
@@ -84,6 +85,7 @@ class CheckpointResult:
                 "peak_to_valley": p2v_val,
                 "terrain_std": ts_val,
                 "mad": round(float(self.mad_values[i]), 2) if self.mad_values and i < len(self.mad_values) else None,
+                "roughness_diff": round(float(self.roughness_diffs[i]), 4) if self.roughness_diffs and i < len(self.roughness_diffs) else None,
             })
 
         return {
@@ -158,6 +160,7 @@ class WindowEstimate:
     quality: dict
     timestamp: float
     mad_value: float = 30.0
+    roughness_diff: float = 0.0
     filtered_lat: Optional[float] = None
     filtered_lon: Optional[float] = None
 
@@ -273,12 +276,19 @@ def _mad(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.mean(np.abs(a - b)))
 
 
+def _trajectory_roughness(a: np.ndarray, b: np.ndarray) -> float:
+    ra = float(np.std(np.diff(a.astype(np.float64))))
+    rb = float(np.std(np.diff(b.astype(np.float64))))
+    denom = max(ra, rb, 1e-6)
+    return abs(ra - rb) / denom
+
+
 def _classify_quality(
-    ncc: float, discr: float, p2v: float, terrain_std: float, mad: float = 30.0,
+    ncc: float, discr: float, p2v: float, terrain_std: float, mad: float = 30.0, roughness_diff: float = 0.0,
 ) -> str:
-    if ncc > 0.8 and discr > 3.0 and p2v > 25.0 and terrain_std > 6.0 and mad < 10.0:
+    if ncc > 0.8 and discr > 3.0 and p2v > 25.0 and terrain_std > 6.0 and mad < 10.0 and roughness_diff < 0.3:
         return "good"
-    if ncc > 0.6 and discr > 1.5 and p2v > 10.0 and terrain_std > 3.0 and mad < 20.0:
+    if ncc > 0.6 and discr > 1.5 and p2v > 10.0 and terrain_std > 3.0 and mad < 20.0 and roughness_diff < 0.5:
         return "marginal"
     return "poor"
 
@@ -350,7 +360,7 @@ def _search_position_grid(
     azimuth_deg: float, speed_ms: float,
     freq_hz: float,
     pixel_radius: int = 4,
-) -> Tuple[float, float, float, float, float]:
+) -> Tuple[float, float, float, float, float, np.ndarray]:
     cr, cc = dem.lonlat_to_pixel(center_lat, center_lon)
     cr_i, cc_i = int(round(cr)), int(round(cc))
 
@@ -360,6 +370,7 @@ def _search_position_grid(
     best_mad = float('inf')
     best_ncc = -1.0
     best_dr, best_dc = 0, 0
+    best_ref = np.zeros(len(observed), dtype=np.float64)
 
     for dr in range(-pixel_radius, pixel_radius + 1):
         for dc in range(-pixel_radius, pixel_radius + 1):
@@ -374,6 +385,7 @@ def _search_position_grid(
                 best_mad = mad_val
                 best_ncc = ncc_val
                 best_dr, best_dc = dr, dc
+                best_ref = ref
 
     best_r, best_c = cr_i + best_dr, cc_i + best_dc
     best_lat, best_lon = dem.pixel_to_lonlat(best_r, best_c)
@@ -394,7 +406,7 @@ def _search_position_grid(
     else:
         discrimination = second_best_mad / max(best_mad, 1e-12)
 
-    return best_lat, best_lon, float(best_mad), float(best_ncc), float(discrimination)
+    return best_lat, best_lon, float(best_mad), float(best_ncc), float(discrimination), best_ref
 
 
 def _search_speed(
@@ -404,7 +416,7 @@ def _search_speed(
     azimuth_deg: float, terrain_std: float,
     ws: int, cfg: Config, freq_hz: float,
 ) -> Tuple[float, float]:
-    speeds = np.linspace(10, 150, 15)
+    speeds = np.linspace(cfg.speed_range_ms[0], cfg.speed_range_ms[1], cfg.n_speed_hypotheses)
     n_ref = min(ws, 60)
     best_speed = cfg.default_speed
     best_mad = float('inf')
@@ -453,8 +465,9 @@ def _process_windows(
         best_est_lat, best_est_lon = dr_lat, dr_lon
         best_az_used = azimuth_deg
         best_discr = 1.0
+        best_ref = np.zeros(len(window), dtype=np.float64)
         for az_candidate in top_azs:
-            elat, elon, mad_val, ncc_val, discr = _search_position_grid(
+            elat, elon, mad_val, ncc_val, discr, ref = _search_position_grid(
                 dem, window, dr_lat, dr_lon,
                 az_candidate, speed_ms, freq_hz,
                 pixel_radius=4,
@@ -465,6 +478,7 @@ def _process_windows(
                 best_est_lat, best_est_lon = elat, elon
                 best_az_used = az_candidate
                 best_discr = discr
+                best_ref = ref
 
         if best_grid_mad > GATE_MAD_MAX:
             continue
@@ -473,7 +487,11 @@ def _process_windows(
         if best_discr < GATE_DISCR_MIN:
             continue
 
-        qual = _classify_quality(abs(best_grid_ncc), best_discr, p2v, window_std, best_grid_mad)
+        rough_diff = _trajectory_roughness(window, best_ref)
+        if rough_diff > 0.5:
+            continue
+
+        qual = _classify_quality(abs(best_grid_ncc), best_discr, p2v, window_std, best_grid_mad, rough_diff)
         confidence = float(max(0, min(1, 1.0 - best_grid_mad / 30.0)))
 
         est = WindowEstimate(
@@ -489,6 +507,7 @@ def _process_windows(
             terrain_std=window_std,
             quality={"quality": qual},
             timestamp=(i + ws // 2) / freq_hz,
+            roughness_diff=float(rough_diff),
         )
 
         estimates.append(est)
@@ -631,6 +650,7 @@ def collect_result(
                 peak_to_valleys=[],
                 terrain_stds=[],
                 mad_values=[],
+                roughness_diffs=[],
                 radar_altitudes=radar_altitudes.tolist(),
                 true_terrain=true_terrain,
                 n_estimates=0,
@@ -662,6 +682,7 @@ def collect_result(
     peak_to_valleys = []
     terrain_stds = []
     mad_values = []
+    roughness_diffs = []
 
     for i, est in enumerate(estimates):
         elat = float(est.filtered_lat if est.filtered_lat is not None else est.position_lat)
@@ -686,6 +707,7 @@ def collect_result(
         peak_to_valleys.append(float(getattr(est, "peak_to_valley", 0.0)))
         terrain_stds.append(float(getattr(est, "terrain_std", 0.0)))
         mad_values.append(float(getattr(est, "mad_value", 30.0)))
+        roughness_diffs.append(float(getattr(est, "roughness_diff", 0.0)))
 
     return CheckpointResult(
         true_lats=list(true_lats),
@@ -720,4 +742,5 @@ def collect_result(
         peak_to_valleys=peak_to_valleys,
         terrain_stds=terrain_stds,
         mad_values=mad_values,
+        roughness_diffs=roughness_diffs,
     )

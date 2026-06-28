@@ -22,7 +22,7 @@ def test_mad_detects_shape_mismatch():
     assert _mad(a, b) > _mad(a, a)
 
 
-def test_search_position_grid_returns_five_values():
+def test_search_position_grid_returns_six_values():
     dem = DEMLoader("data/dem/synthetic_kamchatka.tif")
     lat, lon = dem.pixel_to_lonlat(200, 200)
     ref = dem.elevation_batch(
@@ -30,7 +30,7 @@ def test_search_position_grid_returns_five_values():
         np.array([lon] * 20),
     )
     result = _search_position_grid(dem, ref, lat, lon, 45.0, 60.0, 10.0)
-    assert len(result) == 5
+    assert len(result) == 6
 
 
 def test_search_position_grid_best_mad_is_low_at_correct_position():
@@ -38,7 +38,7 @@ def test_search_position_grid_best_mad_is_low_at_correct_position():
     dem = DEMLoader("data/dem/synthetic_kamchatka.tif")
     lat, lon = dem.pixel_to_lonlat(200, 200)
     ref = _extract_profile(dem, lat, lon, 45.0, 60.0, 30, 10.0)
-    _, _, mad, ncc, discr = _search_position_grid(dem, ref, lat, lon, 45.0, 60.0, 10.0, pixel_radius=2)
+    _, _, mad, ncc, discr, _ = _search_position_grid(dem, ref, lat, lon, 45.0, 60.0, 10.0, pixel_radius=2)
     assert mad < 1.0
     assert abs(ncc) > 0.99
 
@@ -48,7 +48,7 @@ def test_minima_ratio_low_on_flat_region():
     dem = DEMLoader("data/dem/siberia.tif")
     lat, lon = dem.pixel_to_lonlat(200, 200)
     ref = _extract_profile(dem, lat, lon, 45.0, 60.0, 30, 10.0)
-    _, _, mad, ncc, discr = _search_position_grid(dem, ref, lat, lon, 45.0, 60.0, 10.0, pixel_radius=2)
+    _, _, mad, ncc, discr, _ = _search_position_grid(dem, ref, lat, lon, 45.0, 60.0, 10.0, pixel_radius=2)
     assert discr < 3.0  # flat terrain — poor discrimination
 
 

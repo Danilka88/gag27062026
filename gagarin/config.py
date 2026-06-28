@@ -15,7 +15,7 @@ class Config:
     fine_speed_margin: float = 15.0
 
     speed_range_ms: Tuple[float, float] = (10.0, 150.0)
-    n_speed_hypotheses: int = 10
+    n_speed_hypotheses: int = 29
 
     coarse_top_n: int = 5
 
