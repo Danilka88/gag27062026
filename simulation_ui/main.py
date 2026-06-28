@@ -135,11 +135,11 @@ async def api_checkpoint_run(
             start_lat, start_lon, azimuth, speed, n_steps, freq,
         )
 
-        estimates = run_tercom(dem, altitudes, start_lat, start_lon,
+        estimates, estimate_indices = run_tercom(dem, altitudes, start_lat, start_lon,
                                estimated_speed=speed, estimated_azimuth=azimuth,
                                freq_hz=freq)
 
-        result = collect_result(dem, true_lats, true_lons, estimates)
+        result = collect_result(dem, true_lats, true_lons, estimates, estimate_indices=estimate_indices)
         data = result.to_dict()
         data["start_lat"] = start_lat
         data["start_lon"] = start_lon
