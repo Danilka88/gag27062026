@@ -27,6 +27,7 @@ async function runCheckpoint() {
   fd.append('azimuth', document.getElementById('azimuth').value);
   fd.append('speed', document.getElementById('speed').value);
   fd.append('freq', document.getElementById('freq').value);
+  fd.append('baro_altitude', document.getElementById('baro-altitude').value);
 
   try {
     const res = await fetch('/api/checkpoint/run', { method: 'POST', body: fd });

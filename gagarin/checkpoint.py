@@ -157,6 +157,7 @@ def _search_position_grid(
 ) -> Tuple[float, float, float, float]:
     cr, cc = dem.lonlat_to_pixel(center_lat, center_lon)
     cr_i, cc_i = int(round(cr)), int(round(cc))
+    best_abs_ncc = -1.0
     best_ncc = -1.0
     best_lat, best_lon = center_lat, center_lon
     best_r, best_c = float(cr), float(cc)
@@ -165,7 +166,8 @@ def _search_position_grid(
             lat, lon = dem.pixel_to_lonlat(r, c)
             ref = _extract_profile(dem, lat, lon, azimuth_deg, speed_ms, len(observed), freq_hz)
             ncc_val = _ncc(observed, ref)
-            if ncc_val > best_ncc:
+            if abs(ncc_val) > best_abs_ncc:
+                best_abs_ncc = abs(ncc_val)
                 best_ncc = ncc_val
                 best_lat, best_lon = lat, lon
                 best_r, best_c = float(r), float(c)
@@ -181,12 +183,14 @@ def run_tercom(
     estimated_speed: float = 60.0,
     estimated_azimuth: float = 45.0,
     freq_hz: float = 10.0,
+    baro_altitude: float = 1500.0,
 ) -> Tuple[List[object], List[int]]:
     cfg = config or Config.default()
     cfg.default_speed = estimated_speed
     cfg.default_azimuth = estimated_azimuth
     cfg.nmea_freq_hz = freq_hz
     cfg.window_size = min(cfg.window_size, max(len(altitudes) // 2, 10))
+    cfg.baro_altitude = baro_altitude
     cfg.adaptive_sampling = False
 
     pipeline = NavigationPipeline(dem, cfg)
@@ -205,9 +209,8 @@ def run_tercom(
         if len(buf) < ws:
             continue
 
-        observed_radar = np.array(buf)
-        terrain = cfg.baro_altitude - observed_radar
-        if float(np.std(terrain)) < cfg.terrain_std_threshold:
+        observed = np.array(buf)
+        if float(np.std(observed)) < cfg.terrain_std_threshold:
             continue
 
         t_start = (i - ws + 1) / freq_hz
@@ -215,25 +218,26 @@ def run_tercom(
         dr_lat_start, dr_lon_start = offset_coords(start_lat, start_lon, dr_dist_start, az_rad)
 
         est_lat, est_lon, corr_val = _search_position_grid(
-            dem, terrain, dr_lat_start, dr_lon_start,
+            dem, observed, dr_lat_start, dr_lon_start,
             estimated_azimuth, estimated_speed, freq_hz,
             pixel_radius=5,
         )
 
-        if corr_val < 0.5:
+        if abs(corr_val) < 0.5:
             continue
 
         class _SimpleEst:
             pass
 
+        corr_abs = abs(corr_val)
         est = _SimpleEst()
         est.position_lat = est_lat
         est.position_lon = est_lon
         est.azimuth_deg = float(estimated_azimuth)
         est.speed_ms = float(estimated_speed)
-        est.correlation = float(corr_val)
-        est.confidence = float(max(0, min(1, (corr_val - 0.5) * 2)))
-        qual = "good" if corr_val > 0.9 else "marginal" if corr_val > 0.7 else "poor"
+        est.correlation = float(corr_abs)
+        est.confidence = float(max(0, min(1, (corr_abs - 0.5) * 2)))
+        qual = "good" if corr_abs > 0.9 else "marginal" if corr_abs > 0.7 else "poor"
         est.quality = {"quality": qual}
         est.filtered_lat = None
         est.filtered_lon = None

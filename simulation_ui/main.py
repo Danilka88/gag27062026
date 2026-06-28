@@ -115,6 +115,7 @@ async def api_checkpoint_run(
     azimuth: float = Form(...),
     speed: float = Form(60.0),
     freq: float = Form(10.0),
+    baro_altitude: float = Form(1500.0),
 ):
     from gagarin.dem_loader import DEMLoader
 
@@ -138,7 +139,7 @@ async def api_checkpoint_run(
 
         estimates, estimate_indices = run_tercom(dem, altitudes, start_lat, start_lon,
                                estimated_speed=speed, estimated_azimuth=azimuth,
-                               freq_hz=freq)
+                               freq_hz=freq, baro_altitude=baro_altitude)
 
         result = collect_result(dem, true_lats, true_lons, estimates, altitudes, estimate_indices=estimate_indices)
         data = result.to_dict()
