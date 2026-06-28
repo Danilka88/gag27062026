@@ -21,6 +21,7 @@ dependencies = [
     "pyproj>=3.7",
     "click>=8.1",
     "requests>=2.32",
+    "python-multipart>=0.0.32",
 ]
 
 [project.scripts]
