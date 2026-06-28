@@ -1038,3 +1038,110 @@ def svg_landing_zone(
     parts.append('<text x="10" y="130" fill="#adb5bd" font-size="9" text-anchor="middle" transform="rotate(-90,10,130)" font-family="monospace">широта</text>')
 
     return _svg_wrap("".join(parts), 285)
+
+
+def svg_analysis_overview(
+    segments: list,
+    stats: dict,
+    recovery: Optional[dict] = None,
+) -> str:
+    N = min(len(segments), 50)
+    track_x = 40
+    track_w = 420
+    col_w = track_w / max(N, 1)
+    track_h = 48
+    tracks = [
+        {"y": 42, "label": "Корреляция", "key": "corr"},
+        {"y": 100, "label": "Качество", "key": "qual"},
+        {"y": 158, "label": "Ошибка", "key": "err"},
+        {"y": 216, "label": "Потеря", "key": "lost"},
+    ]
+
+    parts = []
+    parts.append(f'<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Тепловая карта симуляции</text>')
+
+    summary = (
+        f'{stats["n_estimates"]} оценок · ø NCC {stats["mean_corr"]:.2f} · '
+        f'{stats["good_pct"]:.0f}% good · макс. ошибка {stats["max_error_m"]:.0f} м · '
+        f'{stats["total_distance_km"]:.1f} км'
+    )
+    parts.append(f'<text x="250" y="32" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">{summary}</text>')
+
+    max_err = max((s["error_m"] for s in segments), default=1.0)
+    if max_err < 1:
+        max_err = 1.0
+
+    for ti, trk in enumerate(tracks):
+        ty = trk["y"]
+        parts.append(f'<rect x="{track_x}" y="{ty}" width="{track_w}" height="{track_h}" fill="#2b3035" rx="3" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="6" y="{ty + track_h // 2 + 3}" fill="#adb5bd" font-size="8" text-anchor="end" font-family="monospace">{trk["label"]}</text>')
+
+        for ci in range(N):
+            s = segments[ci] if ci < len(segments) else segments[-1]
+            x = track_x + ci * col_w
+
+            if ti == 0:
+                corr = max(0.0, min(0.999, s.get("corr", 0.0)))
+                ci_idx = int(corr * (len(TURBO) - 1))
+                color = TURBO[ci_idx]
+                parts.append(f'<rect x="{x:.2f}" y="{ty + 2}" width="{col_w + 0.5:.2f}" height="{track_h - 4}" fill="{color}"/>')
+
+            elif ti == 1:
+                q = s.get("quality", "poor")
+                color = QUAL_COLORS.get(q, "#ea868f")
+                parts.append(f'<rect x="{x:.2f}" y="{ty + 2}" width="{col_w + 0.5:.2f}" height="{track_h - 4}" fill="{color}"/>')
+
+            elif ti == 2:
+                err = max(0.0, s.get("error_m", 0.0))
+                bar_h = (err / max_err) * (track_h - 8)
+                bar_h = max(bar_h, 2.0)
+                t = err / max(max_err, 1)
+                r = int(50 + 200 * t)
+                b = int(200 - 150 * t)
+                parts.append(f'<rect x="{x:.2f}" y="{ty + track_h - 4 - bar_h}" width="{col_w + 0.5:.2f}" height="{bar_h:.1f}" fill="rgb({r},{b // 2},{b})" opacity="0.85"/>')
+
+            elif ti == 3:
+                if s.get("is_lost", False):
+                    parts.append(f'<rect x="{x:.2f}" y="{ty + 2}" width="{col_w + 0.5:.2f}" height="{track_h - 4}" fill="#ea868f" opacity="0.6"/>')
+
+    bar_x = 470
+    bar_h = 35
+    for i in range(6):
+        t = i / 5
+        ci_idx = int(t * (len(TURBO) - 1))
+        color = TURBO[ci_idx]
+        parts.append(f'<rect x="{bar_x}" y="{42 + i * bar_h}" width="8" height="{bar_h}" fill="{color}"/>')
+    parts.append(f'<text x="{bar_x + 4}" y="40" fill="#adb5bd" font-size="6" text-anchor="middle" font-family="monospace">1.0</text>')
+    parts.append(f'<text x="{bar_x + 4}" y="228" fill="#adb5bd" font-size="6" text-anchor="middle" font-family="monospace">0.0</text>')
+
+    ly = 278
+    parts.append(f'<rect x="40" y="{ly}" width="440" height="55" fill="#212529" rx="4" opacity="0.9"/>')
+    legend_items = [
+        ("Корреляция NCC", TURBO[len(TURBO) // 2], False),
+        ("Good", "#75b798", True),
+        ("Marginal", "#ffda6a", True),
+        ("Poor", "#ea868f", True),
+        ("Ошибка (м)", "#6ea8fe", False),
+        ("Потеря TERCOM", "#ea868f", False),
+    ]
+    for idx, (label, color, is_fill) in enumerate(legend_items):
+        lx = 50 + idx * 72
+        if is_fill:
+            parts.append(f'<rect x="{lx}" y="{ly + 6}" width="10" height="10" fill="{color}" rx="2"/>')
+        else:
+            parts.append(f'<rect x="{lx}" y="{ly + 6}" width="10" height="10" fill="none" stroke="{color}" stroke-width="1.5" rx="2"/>')
+        parts.append(f'<text x="{lx + 14}" y="{ly + 15}" fill="#adb5bd" font-size="7" font-family="monospace">{label}</text>')
+
+    parts.append(f'<text x="52" y="{ly + 40}" fill="#6c757d" font-size="7" font-family="monospace">← старт</text>')
+    parts.append(f'<text x="465" y="{ly + 40}" fill="#6c757d" font-size="7" text-anchor="end" font-family="monospace">финиш →</text>')
+
+    if recovery:
+        parts.append(f'<rect x="40" y="{ly + 48}" width="440" height="22" fill="#212529" rx="3" opacity="0.9"/>')
+        parts.append(f'<text x="44" y="{ly + 63}" fill="#ffda6a" font-size="8" font-family="monospace">'
+                     f'Потеря: {recovery.get("lost_duration_s", "—")} с, '
+                     f'дрейф: {recovery.get("drift_m", "—"):.0f} м, '
+                     f'ошибка recovery: {recovery.get("recovery_error_m", "—"):.0f} м, '
+                     f'решение: {recovery.get("decision", "—")}</text>')
+
+    h = 340 + (30 if recovery else 0)
+    return _svg_wrap("".join(parts), h)

@@ -1,6 +1,6 @@
 const state = {
     steps: [],
-    placeholders: 26,
+    placeholders: 27,
     currentIndex: -1,
     isPlaying: false,
     isComplete: false,
@@ -33,7 +33,7 @@ const STEP_NAMES = [
     "R-матрица", "Траектория", "ESKF",
     "Качество", "Итог", "Анализ ИИ", "Карта маршрута",
     "Потеря позиции", "Position Grid Search", "Результат recovery", "Перестроение",
-    "Батарея", "Зона посадки", "Финальный маршрут",
+    "Батарея", "Зона посадки", "Финальный маршрут", "Тепловая карта",
 ];
 
 async function loadScenarios() {
@@ -877,9 +877,10 @@ function switchTab(tabId) {
 
 function getTabSteps(tabId) {
     const phaseMap = {
-        'pipeline': ['pre-flight', 'data', 'correlation', 'filter', 'result', 'analysis'],
+        'pipeline': ['pre-flight', 'data', 'correlation', 'filter', 'result', 'analysis', 'overview'],
         'recovery': ['recovery', 'battery', 'landing', 'final'],
         'replan': ['replan'],
+        'heatmap': ['overview'],
     };
     const phases = phaseMap[tabId] || phaseMap.pipeline;
     return state.steps
@@ -891,7 +892,7 @@ function getTabSteps(tabId) {
 
 function updateTabBar() {
     const tabBar = document.getElementById('tab-bar');
-    const tabs = ['pipeline', 'recovery', 'replan'];
+    const tabs = ['pipeline', 'recovery', 'replan', 'heatmap'];
     let anyVisible = false;
     tabs.forEach(tabId => {
         const btn = tabBar.querySelector(`[data-tab="${tabId}"]`);

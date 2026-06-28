@@ -489,6 +489,7 @@ body {
 .phase-battery .step-phase-badge { color: #6ea8fe; border-color: #6ea8fe33; }
 .phase-landing .step-phase-badge { color: #e599f7; border-color: #e599f733; }
 .phase-final .step-phase-badge { color: #ea868f; border-color: #ea868f33; }
+.phase-overview .step-phase-badge { color: #b580d1; border-color: #b580d133; }
 
 /* Tab bar */
 .tab-bar {

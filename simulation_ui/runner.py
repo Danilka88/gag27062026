@@ -24,6 +24,7 @@ from simulation_ui.svg_generator import (
     svg_replanned_route,
     svg_battery_bar,
     svg_landing_zone,
+    svg_analysis_overview,
 )
 from gagarin.recovery import LostRecoveryModule
 from gagarin.replanning import RouteReplanner
@@ -635,6 +636,7 @@ class SimulationRunner:
         recovery = LostRecoveryModule(dem, cfg)
         lost_segments = recovery.detect_lost_segments(estimates, min_consecutive=5)
         lost_start, lost_end = None, None
+        recovery_info = None
         if lost_segments:
             lost_start, lost_end = lost_segments[-1]
             drift_m = haversine_m(true_lats[lost_start], true_lons[lost_start],
@@ -840,3 +842,52 @@ class SimulationRunner:
                     "n_waypoints": route.n_waypoints,
                     "decision": "finish",
                 })
+
+        recovery_info = {
+            "lost_duration_s": f"{(lost_end - lost_start) / cfg.nmea_freq_hz:.1f}",
+            "drift_m": float(drift_m),
+            "recovery_error_m": float(rec_error),
+            "decision": decision,
+        }
+
+        segments = []
+        for i, est in enumerate(estimates):
+            true_idx = min(i, len(true_lats) - 1)
+            err_m = haversine_m(est.position_lat, est.position_lon,
+                                true_lats[true_idx], true_lons[true_idx])
+            is_lost = any(ls[0] <= i <= ls[1] for ls in (lost_segments or []))
+            segments.append({
+                "corr": float(est.correlation),
+                "quality": est.quality.get("quality", "unknown") if est.quality else "unknown",
+                "error_m": float(err_m),
+                "is_lost": is_lost,
+            })
+
+        n = len(segments)
+        sampled = []
+        for ci in range(min(n, 50)):
+            idx = int(ci * n / max(n, 50))
+            idx = min(idx, n - 1)
+            sampled.append(segments[idx])
+
+        errs = [s["error_m"] for s in segments]
+        quals = [s["quality"] for s in segments]
+        corrs = [s["corr"] for s in segments]
+        total_dist = haversine_m(true_lats[0], true_lons[0], true_lats[-1], true_lons[-1])
+
+        stats = {
+            "n_estimates": n,
+            "mean_corr": float(np.mean(corrs)),
+            "good_pct": sum(1 for q in quals if q == "good") / max(n, 1) * 100.0,
+            "max_error_m": float(max(errs)),
+            "total_distance_km": total_dist / 1000.0,
+        }
+
+        yield _make_step(26, svg_analysis_overview(sampled, stats, recovery_info), {
+            "n_segments": n,
+            "mean_corr": f"{stats['mean_corr']:.3f}",
+            "good_pct": f"{stats['good_pct']:.1f}",
+            "max_error_m": f"{stats['max_error_m']:.0f}",
+            "total_distance_km": f"{stats['total_distance_km']:.2f}",
+            "recovery_present": str(recovery_info is not None),
+        })
