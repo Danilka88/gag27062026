@@ -40,6 +40,7 @@ class CheckpointResult:
     discrimination_ratios: Optional[List[float]] = None
     peak_to_valleys: Optional[List[float]] = None
     terrain_stds: Optional[List[float]] = None
+    mad_values: Optional[List[float]] = None
 
     def to_dict(self) -> dict:
         def _py(v):
@@ -82,6 +83,7 @@ class CheckpointResult:
                 "discrimination_ratio": dr_val,
                 "peak_to_valley": p2v_val,
                 "terrain_std": ts_val,
+                "mad": round(float(self.mad_values[i]), 2) if self.mad_values and i < len(self.mad_values) else None,
             })
 
         return {
@@ -155,6 +157,7 @@ class WindowEstimate:
     terrain_std: float
     quality: dict
     timestamp: float
+    mad_value: float = 30.0
     filtered_lat: Optional[float] = None
     filtered_lon: Optional[float] = None
 
@@ -233,12 +236,18 @@ def _ncc_adaptive(a: np.ndarray, b: np.ndarray, terrain_std: float) -> float:
         return max(raw, det)
 
 
+def _mad(a: np.ndarray, b: np.ndarray) -> float:
+    a = a.astype(np.float64) - np.mean(a)
+    b = b.astype(np.float64) - np.mean(b)
+    return float(np.mean(np.abs(a - b)))
+
+
 def _classify_quality(
-    ncc: float, discr: float, p2v: float, terrain_std: float,
+    ncc: float, discr: float, p2v: float, terrain_std: float, mad: float = 30.0,
 ) -> str:
-    if ncc > 0.8 and discr > 2.5 and p2v > 25.0 and terrain_std > 6.0:
+    if ncc > 0.8 and discr > 3.0 and p2v > 25.0 and terrain_std > 6.0 and mad < 10.0:
         return "good"
-    if ncc > 0.6 and discr > 1.5 and p2v > 10.0 and terrain_std > 3.0:
+    if ncc > 0.6 and discr > 1.5 and p2v > 10.0 and terrain_std > 3.0 and mad < 20.0:
         return "marginal"
     return "poor"
 
@@ -310,13 +319,14 @@ def _search_position_grid(
     azimuth_deg: float, speed_ms: float,
     freq_hz: float,
     pixel_radius: int = 4,
-) -> Tuple[float, float, float, float]:
+) -> Tuple[float, float, float, float, float]:
     cr, cc = dem.lonlat_to_pixel(center_lat, center_lon)
     cr_i, cc_i = int(round(cr)), int(round(cc))
 
     grid_size = 2 * pixel_radius + 1
-    all_vals = np.zeros((grid_size, grid_size))
-    best_abs_ncc = -1.0
+    ncc_vals = np.zeros((grid_size, grid_size))
+    mad_vals = np.full((grid_size, grid_size), float('inf'))
+    best_mad = float('inf')
     best_ncc = -1.0
     best_dr, best_dc = 0, 0
 
@@ -325,32 +335,35 @@ def _search_position_grid(
             r, c = cr_i + dr, cc_i + dc
             lat, lon = dem.pixel_to_lonlat(r, c)
             ref = _extract_profile(dem, lat, lon, azimuth_deg, speed_ms, len(observed), freq_hz)
+            mad_val = _mad(observed, ref)
             ncc_val = _ncc(observed, ref)
-            all_vals[dr + pixel_radius, dc + pixel_radius] = abs(ncc_val)
-            if abs(ncc_val) > best_abs_ncc:
-                best_abs_ncc = abs(ncc_val)
+            mad_vals[dr + pixel_radius, dc + pixel_radius] = mad_val
+            ncc_vals[dr + pixel_radius, dc + pixel_radius] = abs(ncc_val)
+            if mad_val < best_mad:
+                best_mad = mad_val
                 best_ncc = ncc_val
                 best_dr, best_dc = dr, dc
 
     best_r, best_c = cr_i + best_dr, cc_i + best_dc
     best_lat, best_lon = dem.pixel_to_lonlat(best_r, best_c)
 
-    neighbor_sum = 0.0
-    neighbor_count = 0
-    for ndr in (-1, 0, 1):
-        for ndc in (-1, 0, 1):
-            if ndr == 0 and ndc == 0:
+    second_best_mad = float('inf')
+    excl = min(2, max(pixel_radius - 1, 1))
+    for ndr in range(-pixel_radius, pixel_radius + 1):
+        for ndc in range(-pixel_radius, pixel_radius + 1):
+            if (ndr == best_dr and ndc == best_dc) or (abs(ndr - best_dr) <= excl and abs(ndc - best_dc) <= excl):
                 continue
-            nr = best_dr + ndr
-            nc = best_dc + ndc
-            if -pixel_radius <= nr <= pixel_radius and -pixel_radius <= nc <= pixel_radius:
-                neighbor_sum += all_vals[nr + pixel_radius, nc + pixel_radius]
-                neighbor_count += 1
+            nr = ndr + pixel_radius
+            nc = ndc + pixel_radius
+            if mad_vals[nr, nc] < second_best_mad:
+                second_best_mad = mad_vals[nr, nc]
 
-    mean_neighbor = neighbor_sum / max(neighbor_count, 1)
-    discrimination = best_abs_ncc / max(mean_neighbor, 1e-12)
+    if second_best_mad == float('inf'):
+        discrimination = 99.0
+    else:
+        discrimination = second_best_mad / max(best_mad, 1e-12)
 
-    return best_lat, best_lon, float(best_ncc), float(discrimination)
+    return best_lat, best_lon, float(best_mad), float(best_ncc), float(discrimination)
 
 
 def _search_speed(
@@ -363,15 +376,15 @@ def _search_speed(
     speeds = np.linspace(10, 150, 15)
     n_ref = min(ws, 60)
     best_speed = cfg.default_speed
-    best_corr = -1.0
+    best_mad = float('inf')
     obs_first = observed_terrain[:n_ref]
     for sp in speeds:
         ref = _extract_profile(dem, start_lat, start_lon, azimuth_deg, sp, n_ref, freq_hz)
-        cc = _ncc_adaptive(obs_first, ref, terrain_std)
-        if abs(cc) > best_corr:
-            best_corr = abs(cc)
+        mad_val = _mad(obs_first, ref)
+        if mad_val < best_mad:
+            best_mad = mad_val
             best_speed = sp
-    return best_speed, best_corr
+    return best_speed, best_mad
 
 
 def _process_windows(
@@ -397,35 +410,38 @@ def _process_windows(
         dr_dist = t_center * speed_ms
         dr_lat, dr_lon = offset_coords(start_lat, start_lon, dr_dist, az_rad)
 
-        best_grid_corr = -1.0
+        best_grid_mad = float('inf')
+        best_grid_ncc = -1.0
         best_est_lat, best_est_lon = dr_lat, dr_lon
         best_az_used = azimuth_deg
         best_discr = 1.0
         for az_candidate in top_azs:
-            elat, elon, cv, discr = _search_position_grid(
+            elat, elon, mad_val, ncc_val, discr = _search_position_grid(
                 dem, window, dr_lat, dr_lon,
                 az_candidate, speed_ms, freq_hz,
                 pixel_radius=4,
             )
-            if abs(cv) > best_grid_corr:
-                best_grid_corr = abs(cv)
+            if mad_val < best_grid_mad:
+                best_grid_mad = mad_val
+                best_grid_ncc = ncc_val
                 best_est_lat, best_est_lon = elat, elon
                 best_az_used = az_candidate
                 best_discr = discr
 
-        if best_grid_corr < 0.5:
+        if best_grid_mad > 30.0:
             continue
 
-        qual = _classify_quality(best_grid_corr, best_discr, p2v, window_std)
-        confidence = float(max(0, min(1, (best_grid_corr - 0.5) * 2)))
+        qual = _classify_quality(abs(best_grid_ncc), best_discr, p2v, window_std, best_grid_mad)
+        confidence = float(max(0, min(1, 1.0 - best_grid_mad / 30.0)))
 
         est = WindowEstimate(
             position_lat=best_est_lat,
             position_lon=best_est_lon,
             azimuth_deg=float(best_az_used),
             speed_ms=float(speed_ms),
-            correlation=float(best_grid_corr),
+            correlation=float(abs(best_grid_ncc)),
             confidence=confidence,
+            mad_value=float(best_grid_mad),
             discrimination_ratio=float(best_discr),
             peak_to_valley=p2v,
             terrain_std=window_std,
@@ -570,6 +586,7 @@ def collect_result(
                 discrimination_ratios=[],
                 peak_to_valleys=[],
                 terrain_stds=[],
+                mad_values=[],
                 radar_altitudes=radar_altitudes.tolist(),
                 true_terrain=true_terrain,
                 n_estimates=0,
@@ -600,6 +617,7 @@ def collect_result(
     discrimination_ratios = []
     peak_to_valleys = []
     terrain_stds = []
+    mad_values = []
 
     for i, est in enumerate(estimates):
         elat = float(est.position_lat)
@@ -623,6 +641,7 @@ def collect_result(
         discrimination_ratios.append(float(getattr(est, "discrimination_ratio", 1.0)))
         peak_to_valleys.append(float(getattr(est, "peak_to_valley", 0.0)))
         terrain_stds.append(float(getattr(est, "terrain_std", 0.0)))
+        mad_values.append(float(getattr(est, "mad_value", 30.0)))
 
     return CheckpointResult(
         true_lats=list(true_lats),
@@ -656,4 +675,5 @@ def collect_result(
         discrimination_ratios=discrimination_ratios,
         peak_to_valleys=peak_to_valleys,
         terrain_stds=terrain_stds,
+        mad_values=mad_values,
     )
