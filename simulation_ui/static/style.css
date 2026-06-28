@@ -491,6 +491,58 @@ body {
 .phase-final .step-phase-badge { color: #ea868f; border-color: #ea868f33; }
 .phase-overview .step-phase-badge { color: #b580d1; border-color: #b580d133; }
 
+/*** Checkpoint page ***/
+.checkpoint-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+.cp-card {
+    background: #1a1d21;
+    border: 1px solid #2b3035;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.cp-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 1.5rem;
+}
+.cp-map-container {
+    height: 480px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #2b3035;
+}
+.cp-card h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+.cp-card .subtitle {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-bottom: 1.25rem;
+}
+.cp-card .form-label {
+    color: #adb5bd;
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+}
+#cp-table td, #cp-table th {
+    font-size: 0.8rem;
+    font-family: monospace;
+    white-space: nowrap;
+    padding: 0.25rem 0.5rem;
+}
+#cp-table th {
+    position: sticky;
+    top: 0;
+    background: #1a1d21;
+    z-index: 2;
+}
+
 /* Tab bar */
 .tab-bar {
     display: none;

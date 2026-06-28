@@ -1,15 +1,20 @@
 import asyncio
 import json
 import os
+import tempfile
 import threading
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
 from simulation_ui.runner import get_scenarios, SimulationRunner
 from simulation_ui.analyzer import analyze as ai_analyze
+from gagarin.checkpoint import (
+    read_altitudes, convert_start_point,
+    compute_true_trajectory, run_tercom, collect_result,
+)
 
 app = FastAPI(title="Gagarin Simulation UI")
 
@@ -88,3 +93,55 @@ async def api_simulate(scenario_id: str):
         yield {"event": "complete", "data": "{}"}
 
     return EventSourceResponse(event_generator())
+
+
+@app.get("/checkpoint")
+async def checkpoint_page():
+    path = os.path.join(templates_dir, "checkpoint.html")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    return HTMLResponse("<h1>checkpoint.html не найден</h1>")
+
+
+@app.post("/api/checkpoint/run")
+async def api_checkpoint_run(
+    dem_file: UploadFile = File(...),
+    altitudes_file: UploadFile = File(...),
+    start_x: float = Form(...),
+    start_y: float = Form(...),
+    coord_type: str = Form("pixel"),
+    azimuth: float = Form(...),
+    speed: float = Form(60.0),
+    freq: float = Form(10.0),
+):
+    from gagarin.dem_loader import DEMLoader
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dem_path = os.path.join(tmpdir, dem_file.filename or "dem.tif")
+        with open(dem_path, "wb") as f:
+            f.write(await dem_file.read())
+
+        alt_path = os.path.join(tmpdir, "altitudes.txt")
+        with open(alt_path, "wb") as f:
+            f.write(await altitudes_file.read())
+
+        dem = DEMLoader(dem_path)
+        altitudes = read_altitudes(alt_path)
+
+        start_lat, start_lon = convert_start_point(dem, start_x, start_y, coord_type)
+        n_steps = len(altitudes)
+        true_lats, true_lons = compute_true_trajectory(
+            start_lat, start_lon, azimuth, speed, n_steps, freq,
+        )
+
+        estimates = run_tercom(dem, altitudes, start_lat, start_lon,
+                               estimated_speed=speed, estimated_azimuth=azimuth,
+                               freq_hz=freq)
+
+        result = collect_result(dem, true_lats, true_lons, estimates)
+        data = result.to_dict()
+        data["start_lat"] = start_lat
+        data["start_lon"] = start_lon
+
+        return data

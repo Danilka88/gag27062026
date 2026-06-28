@@ -30,6 +30,16 @@ class CoordinateTransformer:
         ys = np.arange(ny) * self._transform.e + self._transform.f
         return xs, ys, data
 
+    def pixel_to_lonlat(self, row: float, col: float) -> Tuple[float, float]:
+        x = col * self._transform.a + self._transform.c
+        y = row * self._transform.e + self._transform.f
+        lon, lat = self._transformer_xy_to_lonlat.transform(x, y)
+        return float(lat), float(lon)
+
+    def projected_to_lonlat(self, x: float, y: float) -> Tuple[float, float]:
+        lon, lat = self._transformer_xy_to_lonlat.transform(x, y)
+        return float(lat), float(lon)
+
     def get_geographic_grid(self, data: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         xs, ys, _ = self.get_elevation_grid(data)
         _, lons = self._transformer_xy_to_lonlat.transform(xs.tolist(), [ys[0]] * len(xs))
@@ -132,6 +142,15 @@ class DEMLoader:
     def elevation(self, lat: float, lon: float) -> float:
         row, col = self._coord.lonlat_to_pixel(lon, lat)
         return self._interp.elevation(row, col)
+
+    def pixel_to_lonlat(self, row: float, col: float) -> Tuple[float, float]:
+        return self._coord.pixel_to_lonlat(row, col)
+
+    def projected_to_lonlat(self, x: float, y: float) -> Tuple[float, float]:
+        return self._coord.projected_to_lonlat(x, y)
+
+    def lonlat_to_pixel(self, lat: float, lon: float) -> Tuple[float, float]:
+        return self._coord.lonlat_to_pixel(lon, lat)
 
     def elevation_batch(self, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
         rows_pix, cols_pix = self._coord.lonlat_to_pixel_batch(
