@@ -400,12 +400,19 @@ def _process_windows(
     az_rad = np.radians(azimuth_deg)
     step_samples = max(ws // 4, 1)
 
+    GATE_MAD_MAX = 30.0
+    GATE_NCC_MIN = 0.3
+    GATE_DISCR_MIN = 1.0
+    GATE_P2V_MIN = 5.0
+
     for i in range(0, len(observed_terrain) - ws + 1, step_samples):
         window = observed_terrain[i:i + ws]
         window_std = float(np.std(window))
         if window_std < cfg.terrain_std_threshold:
             continue
         p2v = float(np.max(window) - np.min(window))
+        if p2v < GATE_P2V_MIN:
+            continue
         t_center = (i + ws / 2) / freq_hz
         dr_dist = t_center * speed_ms
         dr_lat, dr_lon = offset_coords(start_lat, start_lon, dr_dist, az_rad)
@@ -428,7 +435,11 @@ def _process_windows(
                 best_az_used = az_candidate
                 best_discr = discr
 
-        if best_grid_mad > 30.0:
+        if best_grid_mad > GATE_MAD_MAX:
+            continue
+        if abs(best_grid_ncc) < GATE_NCC_MIN:
+            continue
+        if best_discr < GATE_DISCR_MIN:
             continue
 
         qual = _classify_quality(abs(best_grid_ncc), best_discr, p2v, window_std, best_grid_mad)

@@ -49,3 +49,14 @@ def test_minima_ratio_low_on_flat_region():
     ref = _extract_profile(dem, lat, lon, 45.0, 60.0, 30, 10.0)
     _, _, mad, ncc, discr = _search_position_grid(dem, ref, lat, lon, 45.0, 60.0, 10.0, pixel_radius=2)
     assert discr < 3.0  # flat terrain — poor discrimination
+
+
+def test_pre_rejection_passes_good_estimate():
+    from gagarin.checkpoint import _extract_profile, _process_windows
+    from gagarin.config import Config
+    dem = DEMLoader("data/dem/dramatic_kamchatka.tif")
+    lat, lon = dem.pixel_to_lonlat(200, 200)
+    ref = _extract_profile(dem, lat, lon, 45.0, 60.0, 40, 10.0)
+    cfg = Config.default()
+    ests, indices = _process_windows(dem, ref, lat, lon, 45.0, 60.0, 20, [45.0, 44.0, 46.0], 10.0, cfg)
+    assert len(ests) > 0
