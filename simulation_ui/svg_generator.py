@@ -165,7 +165,7 @@ def svg_profile(observed: np.ndarray, reference: Optional[np.ndarray]) -> str:
         if len(observed) > 1 and len(reference) > 1:
             mn = min(len(observed), len(reference))
             cc = float(np.corrcoef(observed[:mn], reference[:mn])[0, 1])
-            parts.append(f'<text x="380" y="175" fill="#dee2e6" font-size="9" font-family="monospace">NCC: {cc:.3f}</text>')
+        parts.append(f'<text x="380" y="175" fill="#dee2e6" font-size="9" font-family="monospace">NCC: {abs(cc):.3f}</text>')
     parts.append('<text x="380" y="155" fill="#6ea8fe" font-size="9" font-family="monospace">измеренный (радар)</text>')
     parts.append('<text x="250" y="250" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">отсчёт вдоль траектории</text>')
     return _svg_wrap("".join(parts), 260)
