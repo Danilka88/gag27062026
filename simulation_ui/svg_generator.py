@@ -1147,6 +1147,46 @@ def svg_analysis_overview(
     return _svg_wrap("".join(parts), h)
 
 
+def svg_ncc_vs_azimuth(azimuths: List[float], ncc_vals: List[float], best_azimuth: float) -> str:
+    if len(azimuths) < 2:
+        return ""
+    az = np.array(azimuths)
+    ncc = np.array(ncc_vals)
+    pw, ph = 440, 180
+    vmin, vmax = -1.0, 1.0
+    parts = []
+    parts.append('<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">NCC по азимутам</text>')
+    for i in range(5):
+        y = 20 + ph * (1 - i / 4)
+        val = vmin + (vmax - vmin) * i / 4
+        parts.append(f'<line x1="28" y1="{y:.1f}" x2="470" y2="{y:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="26" y="{y+3:.1f}" fill="#adb5bd" font-size="9" text-anchor="end" font-family="monospace">{val:.1f}</text>')
+    zero_y = 20 + ph * (1 - (0 - vmin) / (vmax - vmin))
+    parts.append(f'<line x1="28" y1="{zero_y:.1f}" x2="470" y2="{zero_y:.1f}" stroke="#6ea8fe" stroke-width="0.5" stroke-dasharray="4,3"/>')
+    parts.append(f'<text x="472" y="{zero_y+3:.1f}" fill="#6ea8fe" font-size="8" font-family="monospace">0</text>')
+    pts = []
+    for i in range(len(az)):
+        x = 30 + i * pw / max(len(az) - 1, 1)
+        y = 20 + ph * (1 - (ncc[i] - vmin) / (vmax - vmin))
+        y = max(20, min(20 + ph, y))
+        pts.append(f"{x:.1f},{y:.1f}")
+    parts.append(f'<polyline points="{" ".join(pts)}" fill="none" stroke="#adb5bd" stroke-width="1" stroke-linejoin="round"/>')
+    best_i = int(np.argmax(np.abs(ncc)))
+    bx = 30 + best_i * pw / max(len(az) - 1, 1)
+    by = 20 + ph * (1 - (ncc[best_i] - vmin) / (vmax - vmin))
+    by = max(20, min(20 + ph, by))
+    label = f"{az[best_i]:.0f}° ({ncc[best_i]:.3f})"
+    parts.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="4" fill="#ffda6a"/>')
+    parts.append(f'<text x="{bx:.1f}" y="{by-8:.1f}" fill="#ffda6a" font-size="9" text-anchor="middle" font-weight="bold" font-family="monospace">{label}</text>')
+    ticks = 12
+    for i in range(ticks):
+        idx = int(i * (len(az) - 1) / (ticks - 1))
+        x = 30 + idx * pw / max(len(az) - 1, 1)
+        parts.append(f'<text x="{x:.1f}" y="218" fill="#adb5bd" font-size="7" text-anchor="middle" font-family="monospace">{az[idx]:.0f}°</text>')
+    parts.append('<text x="250" y="240" fill="#adb5bd" font-size="9" text-anchor="middle" font-family="monospace">азимут (°)</text>')
+    return _svg_wrap("".join(parts), 250)
+
+
 def svg_checkpoint_profile(radar_altitudes: List[float], true_terrain: List[float]) -> str:
     if len(radar_altitudes) < 2:
         return ""

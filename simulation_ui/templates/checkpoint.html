@@ -18,18 +18,18 @@
     <h1 class="m-0">Gagarin <span class="text-primary">TERCOM</span></h1>
     <a href="/" class="btn btn-outline-secondary btn-sm">← К симуляции</a>
   </div>
-  <p class="subtitle">Третий технический чекпоинт — проверка точности TERCOM-навигации</p>
+  <p class="subtitle">Третий технический чекпоинт — TERCOM по данным радиовысотомера</p>
 
   <div class="cp-form-grid">
     <div class="mb-3">
       <label class="form-label">DEM (GeoTIFF)</label>
       <input type="file" id="dem-input" accept=".tif,.tiff" class="form-control bg-dark border-secondary text-light">
-      <div class="form-text text-secondary-emphasis">Карта рельефа, по которой TERCOM ищет положение БПЛА</div>
+      <div class="form-text text-secondary-emphasis">Карта рельефа</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Высоты (.txt, одна высота на строку)</label>
       <input type="file" id="alt-input" accept=".txt" class="form-control bg-dark border-secondary text-light">
-      <div class="form-text text-secondary-emphasis">Барометрические высоты с БПЛА за время полёта</div>
+      <div class="form-text text-secondary-emphasis">Высоты с радиовысотомера БПЛА за время полёта</div>
     </div>
   </div>
 
@@ -37,32 +37,32 @@
     <div class="mb-3">
       <label class="form-label">start_x</label>
       <input type="number" id="start-x" step="any" class="form-control bg-dark border-secondary text-light" value="200">
-      <div class="form-text text-secondary-emphasis">Начальная точка полёта (зависит от формата ниже)</div>
+      <div class="form-text text-secondary-emphasis">X-координата начальной точки (зависит от формата)</div>
     </div>
     <div class="mb-3">
       <label class="form-label">start_y</label>
       <input type="number" id="start-y" step="any" class="form-control bg-dark border-secondary text-light" value="200">
-      <div class="form-text text-secondary-emphasis">Начальная точка полёта (зависит от формата ниже)</div>
-    </div>
-    <div class="mb-3">
-      <label class="form-label">Азимут (° от севера)</label>
-      <input type="number" id="azimuth" step="any" class="form-control bg-dark border-secondary text-light" value="45">
-      <div class="form-text text-secondary-emphasis">0° → север, 90° → восток, 180° → юг, 270° → запад</div>
-    </div>
-    <div class="mb-3">
-      <label class="form-label">Скорость (м/с)</label>
-      <input type="number" id="speed" step="any" class="form-control bg-dark border-secondary text-light" value="60">
-      <div class="form-text text-secondary-emphasis">Скорость БПЛА для расчёта пройденного пути между замерами</div>
+      <div class="form-text text-secondary-emphasis">Y-координата начальной точки (зависит от формата)</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Частота (Гц)</label>
       <input type="number" id="freq" step="any" class="form-control bg-dark border-secondary text-light" value="10">
-      <div class="form-text text-secondary-emphasis">Как часто делались замеры высот (10 Гц = 10 раз/с)</div>
+      <div class="form-text text-secondary-emphasis">Частота измерений радиовысотомера</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Барометрическая высота (м)</label>
       <input type="number" id="baro-altitude" step="any" class="form-control bg-dark border-secondary text-light" value="1500">
-      <div class="form-text text-secondary-emphasis">Высота барометрического уровня — constant offset для пересчёта радарных высот в рельеф</div>
+      <div class="form-text text-secondary-emphasis">Абсолютная высота полёта для пересчёта радарных высот в рельеф</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Азимут эталонный (°) — опционально</label>
+      <input type="number" id="ref-azimuth" step="any" class="form-control bg-dark border-secondary text-light" value="45">
+      <div class="form-text text-secondary-emphasis">Для расчёта ошибки относительно эталонной траектории</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Скорость эталонная (м/с) — опционально</label>
+      <input type="number" id="ref-speed" step="any" class="form-control bg-dark border-secondary text-light" value="60">
+      <div class="form-text text-secondary-emphasis">Для расчёта ошибки относительно эталонной траектории</div>
     </div>
   </div>
 
@@ -82,11 +82,11 @@
         <label class="form-check-label" for="ct-proj">Проецированные (easting, northing)</label>
       </div>
     </div>
-    <div class="form-text text-secondary-emphasis mt-2">Пиксели: индексы строки/колонки в DEM · Гео: широта/долгота в градусах · Проецированные: метры в CRS карты</div>
+    <div class="form-text text-secondary-emphasis mt-2">Пиксели: row/col · Гео: широта/долгота · Проецированные: метры в CRS карты</div>
   </div>
 
   <button id="run-btn" class="btn btn-primary btn-lg w-100" onclick="runCheckpoint()" disabled>
-    ▶ Запустить
+    ▶ Запустить TERCOM
   </button>
   <div id="cp-status" class="mt-2 text-secondary-emphasis small text-center"></div>
 </div>
@@ -96,12 +96,33 @@
     <h3 class="m-0">Результаты</h3>
     <div>
       <span id="cp-stats" class="text-secondary-emphasis small me-3"></span>
+      <span id="cp-informativity" class="small me-3"></span>
+      <span id="cp-ambiguity" class="small me-3 text-warning-emphasis" style="display:none"></span>
       <button class="btn btn-outline-secondary btn-sm" onclick="downloadCSV()">Скачать CSV</button>
     </div>
   </div>
-    <div id="cp-map" class="cp-map-container"></div>
-    <div id="cp-profile-chart" class="mt-3"></div>
-    <div id="cp-table-wrapper" class="mt-3" style="max-height:400px;overflow-y:auto">
+
+  <div id="cp-vector-result" class="mb-3 p-3" style="background:#2b3035;border-radius:8px;display:none">
+    <div class="row text-center">
+      <div class="col">
+        <div class="text-secondary-emphasis small">Азимут</div>
+        <div id="cp-azimuth-value" class="fs-4 fw-bold text-info">—</div>
+      </div>
+      <div class="col">
+        <div class="text-secondary-emphasis small">Скорость</div>
+        <div id="cp-speed-value" class="fs-4 fw-bold text-info">—</div>
+      </div>
+      <div class="col">
+        <div class="text-secondary-emphasis small">NCC</div>
+        <div id="cp-ncc-value" class="fs-4 fw-bold text-info">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="cp-heatmap" class="mb-3"></div>
+  <div id="cp-map" class="cp-map-container"></div>
+  <div id="cp-profile-chart" class="mt-3"></div>
+  <div id="cp-table-wrapper" class="mt-3" style="max-height:400px;overflow-y:auto">
     <table class="table table-dark table-sm table-striped" id="cp-table">
       <thead><tr id="cp-table-head"></tr></thead>
       <tbody id="cp-table-body"></tbody>

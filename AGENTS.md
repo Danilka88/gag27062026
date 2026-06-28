@@ -70,6 +70,7 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 | **eskf** | `eskf.py` | `ErrorStateKalmanFilter` | 6D-фильтр. solve vs inv. Degree bug fixed. |
 | **pipeline** | `pipeline.py` | `NavigationPipeline` | Оркестратор: буфер→корреляция→оценка→dead reckoning→ESKF. |
 | **viz/mission** | `viz/mission.py` | `mission_viewer()` | 3-панельный HTML-вьювер для pre-flight mission package: карта, профиль информативности, fingerprint-матрица. |
+| **checkpoint** | `checkpoint.py` | `CheckpointResult`, `WindowEstimate`, `run_tercom()`, `_azimuth_consensus()`, `_ransac_filter()`, `_ncc_adaptive()`, `_classify_quality()`, `_search_position_grid()` | TERCOM-коррекция по файлу высот. Адаптивный NCC, position grid ±4 px, multi-start, NCC-weighted consensus, RANSAC, ambiguity detection. |
 | **data_generator** | `data_generator.py` | `DataGenerator` | Симулирует полёт: NMEA строки с шумом. |
 | **cli** | `cli.py` | CLI (click) | Точка входа: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `analyze`. |
 | **simulation_ui** | `simulation_ui/main.py` | FastAPI SSE endpoint | Сервер для интерактивной симуляции TERCOM в реальном времени. Endpoint: `GET /api/simulate/{id}` → SSE stream из 14 шагов. |
@@ -86,6 +87,12 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 - **DEM тюнинг**: synthetic σ=99м → dramatic σ=688м для наглядных демок.
 - **Degree bug фикс**: ESKF `update_position` больше не делает `np.degrees()` на уже градусах.
 - **Подписи к графикам** с примерами соотношений: каждая подпись содержит ✅⚠️❌ блок с конкретными числами (корреляция >0.95 → надёжно, ошибка азимута >30° → сбой и т.д.), чтобы пользователь понимал, хорошо это или плохо.
+- **Adaptive NCC**: terrain_std ≥ 20 → детренд, < 10 → raw, 10–20 → max(raw, det). Исправляет коллапс детрендинга на равнине (Sakhalin σ=1.3 м).
+- **NCC-weighted azimuth consensus**: взвешенное голосование (вес = NCC) по всем окнам для выбора итогового азимута. Scoring использует consensus_az, а не cand_az.
+- **RANSAC position filter**: med + 2×MAD порог, ≥4 оценок, не трогает >50% выборки.
+- **Ambiguity detection**: multi-start находит два азимута >30° с NCC в пределах 10% → `heatmap.ambiguous = True`.
+- **Center-index fix**: ошибка позиции считалась от start-индекса окна вместо центра (смещение ~450 м для ws=150). Исправлено: `estimate_indices.append(i + ws // 2)`.
+- **Grid radius 3→4**: поиск ±4 px вместо ±3. Покрытие DEM с разрешением 37 м/px: с ±111 м до ±148 м.
 
 ## DEMs в `data/dem/`
 

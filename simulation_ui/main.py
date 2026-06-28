@@ -15,7 +15,7 @@ from gagarin.checkpoint import (
     read_altitudes, convert_start_point,
     compute_true_trajectory, run_tercom, collect_result,
 )
-from simulation_ui.svg_generator import svg_checkpoint_profile
+from simulation_ui.svg_generator import svg_checkpoint_profile, svg_heatmap, svg_ncc_vs_azimuth
 
 app = FastAPI(title="Gagarin Simulation UI")
 
@@ -112,10 +112,10 @@ async def api_checkpoint_run(
     start_x: float = Form(...),
     start_y: float = Form(...),
     coord_type: str = Form("pixel"),
-    azimuth: float = Form(...),
-    speed: float = Form(60.0),
     freq: float = Form(10.0),
     baro_altitude: float = Form(1500.0),
+    ref_azimuth: float = Form(45.0),
+    ref_speed: float = Form(60.0),
 ):
     from gagarin.dem_loader import DEMLoader
 
@@ -133,21 +133,34 @@ async def api_checkpoint_run(
 
         start_lat, start_lon = convert_start_point(dem, start_x, start_y, coord_type)
         n_steps = len(altitudes)
+
         true_lats, true_lons = compute_true_trajectory(
-            start_lat, start_lon, azimuth, speed, n_steps, freq,
+            start_lat, start_lon, ref_azimuth, ref_speed, n_steps, freq,
         )
 
-        estimates, estimate_indices = run_tercom(dem, altitudes, start_lat, start_lon,
-                               estimated_speed=speed, estimated_azimuth=azimuth,
-                               freq_hz=freq, baro_altitude=baro_altitude)
+        estimates, estimate_indices, heatmap = run_tercom(
+            dem, altitudes, start_lat, start_lon,
+            freq_hz=freq, baro_altitude=baro_altitude,
+        )
 
-        result = collect_result(dem, true_lats, true_lons, estimates, altitudes, estimate_indices=estimate_indices)
+        result = collect_result(
+            dem, true_lats, true_lons, estimates, altitudes,
+            estimate_indices=estimate_indices, heatmap_data=heatmap,
+        )
         data = result.to_dict()
         data["start_lat"] = start_lat
         data["start_lon"] = start_lon
+
         data["profile_svg"] = svg_checkpoint_profile(
             data.get("radar_altitudes", []),
             data.get("true_terrain", []),
         )
+
+        hm = data.get("heatmap", {})
+        hm_azs = hm.get("azimuths")
+        hm_ncc = hm.get("ncc_vals")
+        hm_best_az = hm.get("best_azimuth")
+        if hm_azs and hm_ncc and hm_best_az is not None:
+            data["heatmap_svg"] = svg_ncc_vs_azimuth(hm_azs, hm_ncc, hm_best_az)
 
         return data

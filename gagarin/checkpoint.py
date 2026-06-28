@@ -3,9 +3,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from gagarin.dem_loader import DEMLoader
-from gagarin.pipeline import NavigationPipeline
 from gagarin.config import Config
-from gagarin.geo_utils import offset_coords_batch, haversine_m, offset_coords
+from gagarin.geo_utils import offset_coords, offset_coords_batch, haversine_m
 
 
 @dataclass
@@ -27,6 +26,20 @@ class CheckpointResult:
     n_steps: int
     start_lat: float
     start_lon: float
+    best_azimuth: Optional[float] = None
+    best_speed: Optional[float] = None
+    heatmap_azimuths: Optional[List[float]] = None
+    heatmap_ncc_vals: Optional[List[float]] = None
+    heatmap_best_corr: Optional[float] = None
+    heatmap_top_azimuths: Optional[List[float]] = None
+    heatmap_top_corrs: Optional[List[float]] = None
+    informativity_ratio: Optional[float] = None
+    heatmap_terrain_std: Optional[float] = None
+    heatmap_ambiguous: bool = False
+    confidences: Optional[List[float]] = None
+    discrimination_ratios: Optional[List[float]] = None
+    peak_to_valleys: Optional[List[float]] = None
+    terrain_stds: Optional[List[float]] = None
 
     def to_dict(self) -> dict:
         def _py(v):
@@ -35,40 +48,53 @@ class CheckpointResult:
             if isinstance(v, (np.integer,)):
                 return int(v)
             return v
+
+        segments = []
+        for i in range(self.n_steps):
+            segments.append({
+                "step": i,
+                "true_lat": round(float(self.true_lats[i]), 7),
+                "true_lon": round(float(self.true_lons[i]), 7),
+                "true_row": round(float(self.true_rows[i]), 2),
+                "true_col": round(float(self.true_cols[i]), 2),
+            })
+
+        estimates = []
+        for i in range(self.n_estimates):
+            conf_val = round(float(self.confidences[i]), 4) if self.confidences and i < len(self.confidences) else None
+            dr_val = round(float(self.discrimination_ratios[i]), 3) if self.discrimination_ratios and i < len(self.discrimination_ratios) else None
+            p2v_val = round(float(self.peak_to_valleys[i]), 1) if self.peak_to_valleys and i < len(self.peak_to_valleys) else None
+            ts_val = round(float(self.terrain_stds[i]), 2) if self.terrain_stds and i < len(self.terrain_stds) else None
+            estimates.append({
+                "step": i + 1,
+                "true_lat": round(float(self.true_lats[i]), 7),
+                "true_lon": round(float(self.true_lons[i]), 7),
+                "true_row": round(float(self.true_rows[i]), 2),
+                "true_col": round(float(self.true_cols[i]), 2),
+                "est_lat": round(float(self.est_lats[i]), 7),
+                "est_lon": round(float(self.est_lons[i]), 7),
+                "est_row": round(float(self.est_rows[i]), 2),
+                "est_col": round(float(self.est_cols[i]), 2),
+                "error_m": round(float(self.errors_m[i]), 2),
+                "correlation": round(float(self.correlations[i]), 4),
+                "quality": self.qualities[i],
+                "confidence": conf_val,
+                "discrimination_ratio": dr_val,
+                "peak_to_valley": p2v_val,
+                "terrain_std": ts_val,
+            })
+
         return {
             "n_estimates": self.n_estimates,
             "n_steps": self.n_steps,
             "start_lat": self.start_lat,
             "start_lon": self.start_lon,
+            "best_azimuth": self.best_azimuth,
+            "best_speed": self.best_speed,
             "radar_altitudes": [round(float(a), 2) for a in self.radar_altitudes],
             "true_terrain": [round(float(t), 2) for t in self.true_terrain],
-            "segments": [
-                {
-                    "step": i,
-                    "true_lat": round(float(self.true_lats[i]), 7),
-                    "true_lon": round(float(self.true_lons[i]), 7),
-                    "true_row": round(float(self.true_rows[i]), 2),
-                    "true_col": round(float(self.true_cols[i]), 2),
-                }
-                for i in range(self.n_steps)
-            ],
-            "estimates": [
-                {
-                    "step": i + 1,
-                    "true_lat": round(float(self.true_lats[i]), 7),
-                    "true_lon": round(float(self.true_lons[i]), 7),
-                    "true_row": round(float(self.true_rows[i]), 2),
-                    "true_col": round(float(self.true_cols[i]), 2),
-                    "est_lat": round(float(self.est_lats[i]), 7),
-                    "est_lon": round(float(self.est_lons[i]), 7),
-                    "est_row": round(float(self.est_rows[i]), 2),
-                    "est_col": round(float(self.est_cols[i]), 2),
-                    "error_m": round(float(self.errors_m[i]), 2),
-                    "correlation": round(float(self.correlations[i]), 4),
-                    "quality": self.qualities[i],
-                }
-                for i in range(self.n_estimates)
-            ],
+            "segments": segments,
+            "estimates": estimates,
             "stats": {
                 "mean_error_m": round(float(np.mean(self.errors_m)), 2) if self.errors_m else 0,
                 "max_error_m": round(float(np.max(self.errors_m)), 2) if self.errors_m else 0,
@@ -78,6 +104,17 @@ class CheckpointResult:
                     haversine_m(self.true_lats[0], self.true_lons[0],
                                  self.true_lats[-1], self.true_lons[-1]) / 1000.0
                 ), 2),
+            },
+            "heatmap": {
+                "azimuths": self.heatmap_azimuths,
+                "ncc_vals": self.heatmap_ncc_vals,
+                "best_azimuth": self.best_azimuth,
+                "best_correlation": self.heatmap_best_corr,
+                "top_azimuths": self.heatmap_top_azimuths,
+                "top_correlations": self.heatmap_top_corrs,
+                "informativity_ratio": getattr(self, "informativity_ratio", None),
+                "terrain_std": getattr(self, "heatmap_terrain_std", None),
+                "ambiguous": getattr(self, "heatmap_ambiguous", False),
             },
         }
 
@@ -105,6 +142,51 @@ def convert_start_point(
         raise ValueError(f"Unknown coord_type: {coord_type}")
 
 
+@dataclass
+class WindowEstimate:
+    position_lat: float
+    position_lon: float
+    azimuth_deg: float
+    speed_ms: float
+    correlation: float
+    confidence: float
+    discrimination_ratio: float
+    peak_to_valley: float
+    terrain_std: float
+    quality: dict
+    timestamp: float
+    filtered_lat: Optional[float] = None
+    filtered_lon: Optional[float] = None
+
+
+def _azimuth_consensus(estimates: list) -> float:
+    weights = {}
+    for est in estimates:
+        az = round(est.azimuth_deg, 1)
+        weights[az] = weights.get(az, 0) + est.correlation
+    if not weights:
+        return estimates[0].azimuth_deg if estimates else 0.0
+    return max(weights, key=weights.get)
+
+
+def _ransac_filter(
+    estimates: list, indices: list,
+) -> tuple:
+    if len(estimates) < 4:
+        return estimates, indices
+    lats = np.array([e.position_lat for e in estimates])
+    lons = np.array([e.position_lon for e in estimates])
+    med_lat, med_lon = float(np.median(lats)), float(np.median(lons))
+    dists = np.array([haversine_m(lat, lon, med_lat, med_lon) for lat, lon in zip(lats, lons)])
+    med_dist = float(np.median(dists))
+    mad = float(np.median(np.abs(dists - med_dist)))
+    threshold = med_dist + 2.0 * max(mad, 1.0)
+    keep = [i for i, d in enumerate(dists) if d <= threshold]
+    if len(keep) < max(3, len(estimates) // 2):
+        return estimates, indices
+    return [estimates[i] for i in keep], [indices[i] for i in keep]
+
+
 def compute_true_trajectory(
     start_lat: float, start_lon: float,
     azimuth_deg: float, speed_ms: float,
@@ -117,6 +199,48 @@ def compute_true_trajectory(
     az_rad = np.radians(azimuth_deg)
     lats, lons = offset_coords_batch(start_lats, start_lons, distances, az_rad, start_lat)
     return lats, lons
+
+
+def _detrend(a: np.ndarray) -> np.ndarray:
+    x = np.arange(len(a))
+    coeffs = np.polyfit(x, a, 1)
+    return a - np.polyval(coeffs, x)
+
+
+def _ncc(a: np.ndarray, b: np.ndarray) -> float:
+    a = a.astype(np.float64)
+    b = b.astype(np.float64)
+    a_m = a - np.mean(a)
+    b_m = b - np.mean(b)
+    denom = np.sqrt(np.sum(a_m ** 2) * np.sum(b_m ** 2))
+    if denom < 1e-12:
+        return 0.0
+    return float(np.sum(a_m * b_m) / denom)
+
+
+def _ncc_detrend(a: np.ndarray, b: np.ndarray) -> float:
+    return _ncc(_detrend(a), _detrend(b))
+
+
+def _ncc_adaptive(a: np.ndarray, b: np.ndarray, terrain_std: float) -> float:
+    if terrain_std >= 20.0:
+        return _ncc_detrend(a, b)
+    elif terrain_std < 10.0:
+        return _ncc(a, b)
+    else:
+        raw = abs(_ncc(a, b))
+        det = abs(_ncc_detrend(a, b))
+        return max(raw, det)
+
+
+def _classify_quality(
+    ncc: float, discr: float, p2v: float, terrain_std: float,
+) -> str:
+    if ncc > 0.8 and discr > 2.5 and p2v > 25.0 and terrain_std > 6.0:
+        return "good"
+    if ncc > 0.6 and discr > 1.5 and p2v > 10.0 and terrain_std > 3.0:
+        return "marginal"
+    return "poor"
 
 
 def _extract_profile(
@@ -136,15 +260,47 @@ def _extract_profile(
     return dem.elevation_batch(lats, lons)
 
 
-def _ncc(a: np.ndarray, b: np.ndarray) -> float:
-    a = a.astype(np.float64)
-    b = b.astype(np.float64)
-    a_m = a - np.mean(a)
-    b_m = b - np.mean(b)
-    denom = np.sqrt(np.sum(a_m ** 2) * np.sum(b_m ** 2))
-    if denom < 1e-12:
-        return 0.0
-    return float(np.sum(a_m * b_m) / denom)
+def _compute_heatmap(
+    dem: DEMLoader,
+    observed_terrain: np.ndarray,
+    start_lat: float, start_lon: float,
+    freq_hz: float,
+    step_deg: float = 1.0,
+    nominal_speed: float = 60.0,
+) -> dict:
+    n = min(len(observed_terrain), 60)
+    observed = observed_terrain[:n]
+    n_eff = len(observed)
+
+    if n_eff < 5:
+        return {
+            "azimuths": [], "ncc_vals": [],
+            "best_azimuth": None, "best_correlation": None,
+            "top_azimuths": [], "top_correlations": [],
+            "terrain_std": 0.0,
+        }
+
+    terrain_std = float(np.std(observed))
+    azimuths = np.arange(0, 360, step_deg)
+    ncc_vals = np.zeros(len(azimuths))
+
+    for ai, az in enumerate(azimuths):
+        ref = _extract_profile(dem, start_lat, start_lon, az, nominal_speed, n_eff, freq_hz)
+        ncc_vals[ai] = abs(_ncc_adaptive(observed, ref, terrain_std))
+
+    best_idxs = np.argsort(-np.abs(ncc_vals))[:3]
+    top_azimuths = [float(azimuths[i]) for i in best_idxs]
+    top_correlations = [float(ncc_vals[i]) for i in best_idxs]
+
+    return {
+        "azimuths": [float(a) for a in azimuths],
+        "ncc_vals": [float(v) for v in ncc_vals],
+        "best_azimuth": top_azimuths[0],
+        "best_correlation": top_correlations[0],
+        "top_azimuths": top_azimuths,
+        "top_correlations": top_correlations,
+        "terrain_std": terrain_std,
+    }
 
 
 def _search_position_grid(
@@ -153,25 +309,134 @@ def _search_position_grid(
     center_lat: float, center_lon: float,
     azimuth_deg: float, speed_ms: float,
     freq_hz: float,
-    pixel_radius: int = 5,
+    pixel_radius: int = 4,
 ) -> Tuple[float, float, float, float]:
     cr, cc = dem.lonlat_to_pixel(center_lat, center_lon)
     cr_i, cc_i = int(round(cr)), int(round(cc))
+
+    grid_size = 2 * pixel_radius + 1
+    all_vals = np.zeros((grid_size, grid_size))
     best_abs_ncc = -1.0
     best_ncc = -1.0
-    best_lat, best_lon = center_lat, center_lon
-    best_r, best_c = float(cr), float(cc)
-    for r in range(cr_i - pixel_radius, cr_i + pixel_radius + 1):
-        for c in range(cc_i - pixel_radius, cc_i + pixel_radius + 1):
+    best_dr, best_dc = 0, 0
+
+    for dr in range(-pixel_radius, pixel_radius + 1):
+        for dc in range(-pixel_radius, pixel_radius + 1):
+            r, c = cr_i + dr, cc_i + dc
             lat, lon = dem.pixel_to_lonlat(r, c)
             ref = _extract_profile(dem, lat, lon, azimuth_deg, speed_ms, len(observed), freq_hz)
             ncc_val = _ncc(observed, ref)
+            all_vals[dr + pixel_radius, dc + pixel_radius] = abs(ncc_val)
             if abs(ncc_val) > best_abs_ncc:
                 best_abs_ncc = abs(ncc_val)
                 best_ncc = ncc_val
-                best_lat, best_lon = lat, lon
-                best_r, best_c = float(r), float(c)
-    return best_lat, best_lon, float(best_ncc)
+                best_dr, best_dc = dr, dc
+
+    best_r, best_c = cr_i + best_dr, cc_i + best_dc
+    best_lat, best_lon = dem.pixel_to_lonlat(best_r, best_c)
+
+    neighbor_sum = 0.0
+    neighbor_count = 0
+    for ndr in (-1, 0, 1):
+        for ndc in (-1, 0, 1):
+            if ndr == 0 and ndc == 0:
+                continue
+            nr = best_dr + ndr
+            nc = best_dc + ndc
+            if -pixel_radius <= nr <= pixel_radius and -pixel_radius <= nc <= pixel_radius:
+                neighbor_sum += all_vals[nr + pixel_radius, nc + pixel_radius]
+                neighbor_count += 1
+
+    mean_neighbor = neighbor_sum / max(neighbor_count, 1)
+    discrimination = best_abs_ncc / max(mean_neighbor, 1e-12)
+
+    return best_lat, best_lon, float(best_ncc), float(discrimination)
+
+
+def _search_speed(
+    dem: DEMLoader,
+    observed_terrain: np.ndarray,
+    start_lat: float, start_lon: float,
+    azimuth_deg: float, terrain_std: float,
+    ws: int, cfg: Config, freq_hz: float,
+) -> Tuple[float, float]:
+    speeds = np.linspace(10, 150, 15)
+    n_ref = min(ws, 60)
+    best_speed = cfg.default_speed
+    best_corr = -1.0
+    obs_first = observed_terrain[:n_ref]
+    for sp in speeds:
+        ref = _extract_profile(dem, start_lat, start_lon, azimuth_deg, sp, n_ref, freq_hz)
+        cc = _ncc_adaptive(obs_first, ref, terrain_std)
+        if abs(cc) > best_corr:
+            best_corr = abs(cc)
+            best_speed = sp
+    return best_speed, best_corr
+
+
+def _process_windows(
+    dem: DEMLoader,
+    observed_terrain: np.ndarray,
+    start_lat: float, start_lon: float,
+    azimuth_deg: float, speed_ms: float,
+    ws: int, top_azs: List[float],
+    freq_hz: float, cfg: Config,
+) -> Tuple[List, List[int]]:
+    estimates = []
+    estimate_indices = []
+    az_rad = np.radians(azimuth_deg)
+    step_samples = max(ws // 4, 1)
+
+    for i in range(0, len(observed_terrain) - ws + 1, step_samples):
+        window = observed_terrain[i:i + ws]
+        window_std = float(np.std(window))
+        if window_std < cfg.terrain_std_threshold:
+            continue
+        p2v = float(np.max(window) - np.min(window))
+        t_center = (i + ws / 2) / freq_hz
+        dr_dist = t_center * speed_ms
+        dr_lat, dr_lon = offset_coords(start_lat, start_lon, dr_dist, az_rad)
+
+        best_grid_corr = -1.0
+        best_est_lat, best_est_lon = dr_lat, dr_lon
+        best_az_used = azimuth_deg
+        best_discr = 1.0
+        for az_candidate in top_azs:
+            elat, elon, cv, discr = _search_position_grid(
+                dem, window, dr_lat, dr_lon,
+                az_candidate, speed_ms, freq_hz,
+                pixel_radius=4,
+            )
+            if abs(cv) > best_grid_corr:
+                best_grid_corr = abs(cv)
+                best_est_lat, best_est_lon = elat, elon
+                best_az_used = az_candidate
+                best_discr = discr
+
+        if best_grid_corr < 0.5:
+            continue
+
+        qual = _classify_quality(best_grid_corr, best_discr, p2v, window_std)
+        confidence = float(max(0, min(1, (best_grid_corr - 0.5) * 2)))
+
+        est = WindowEstimate(
+            position_lat=best_est_lat,
+            position_lon=best_est_lon,
+            azimuth_deg=float(best_az_used),
+            speed_ms=float(speed_ms),
+            correlation=float(best_grid_corr),
+            confidence=confidence,
+            discrimination_ratio=float(best_discr),
+            peak_to_valley=p2v,
+            terrain_std=window_std,
+            quality={"quality": qual},
+            timestamp=(i + ws // 2) / freq_hz,
+        )
+
+        estimates.append(est)
+        estimate_indices.append(i + ws // 2)
+
+    return estimates, estimate_indices
 
 
 def run_tercom(
@@ -180,77 +445,87 @@ def run_tercom(
     start_lat: float,
     start_lon: float,
     config: Optional[Config] = None,
-    estimated_speed: float = 60.0,
-    estimated_azimuth: float = 45.0,
     freq_hz: float = 10.0,
     baro_altitude: float = 1500.0,
-) -> Tuple[List[object], List[int]]:
+) -> Tuple[List, List[int], dict]:
     cfg = config or Config.default()
-    cfg.default_speed = estimated_speed
-    cfg.default_azimuth = estimated_azimuth
-    cfg.nmea_freq_hz = freq_hz
-    cfg.window_size = min(cfg.window_size, max(len(altitudes) // 2, 10))
-    cfg.baro_altitude = baro_altitude
-    cfg.adaptive_sampling = False
+    base_ws = min(cfg.window_size, max(len(altitudes) // 2, 10))
 
-    pipeline = NavigationPipeline(dem, cfg)
-    pipeline.initialize(start_lat, start_lon)
+    observed_terrain = baro_altitude - altitudes
+    observed_terrain = np.maximum(observed_terrain, -500.0)
 
-    estimates = []
-    estimate_indices = []
-    buf = []
-    az_rad = np.radians(estimated_azimuth)
-    ws = cfg.window_size
+    heatmap = _compute_heatmap(dem, observed_terrain[:base_ws], start_lat, start_lon, freq_hz)
+    best_az = heatmap.get("best_azimuth")
+    top_azs = heatmap.get("top_azimuths", [best_az] if best_az else [])
+    if best_az is None:
+        return [], [], heatmap
 
-    for i, alt in enumerate(altitudes):
-        buf.append(alt)
-        if len(buf) > ws:
-            buf.pop(0)
-        if len(buf) < ws:
-            continue
+    first_std = float(np.std(observed_terrain[:base_ws]))
+    heatmap["terrain_std"] = float(first_std)
 
-        observed = np.array(buf)
-        if float(np.std(observed)) < cfg.terrain_std_threshold:
-            continue
+    informativity = first_std / max(cfg.noise_std, 0.1)
+    heatmap["informativity_ratio"] = float(informativity)
 
-        t_start = (i - ws + 1) / freq_hz
-        dr_dist_start = t_start * estimated_speed
-        dr_lat_start, dr_lon_start = offset_coords(start_lat, start_lon, dr_dist_start, az_rad)
+    ws = base_ws
 
-        est_lat, est_lon, corr_val = _search_position_grid(
-            dem, observed, dr_lat_start, dr_lon_start,
-            estimated_azimuth, estimated_speed, freq_hz,
-            pixel_radius=5,
+    best_speed, _ = _search_speed(dem, observed_terrain, start_lat, start_lon,
+                                  best_az, first_std, ws, cfg, freq_hz)
+
+    if first_std >= 20.0:
+        estimates, indices = _process_windows(
+            dem, observed_terrain, start_lat, start_lon,
+            best_az, best_speed, ws, top_azs, freq_hz, cfg,
         )
+        if not estimates:
+            return [], [], heatmap
+        consensus_az = _azimuth_consensus(estimates)
+        estimates, indices = _ransac_filter(estimates, indices)
+        heatmap["best_azimuth"] = float(consensus_az)
+        heatmap["best_speed"] = float(best_speed)
+        return estimates, indices, heatmap
 
-        if abs(corr_val) < 0.5:
+    primary_az = top_azs[0]
+    candidates = []
+    for cand_az in top_azs:
+        cand_speed, _ = _search_speed(dem, observed_terrain, start_lat, start_lon,
+                                      cand_az, first_std, ws, cfg, freq_hz)
+        ests, est_indices = _process_windows(
+            dem, observed_terrain, start_lat, start_lon,
+            cand_az, cand_speed, ws, top_azs, freq_hz, cfg,
+        )
+        if not ests:
             continue
+        consensus_az = _azimuth_consensus(ests)
+        mean_ncc = float(np.mean([e.correlation for e in ests]))
+        candidates.append((ests, est_indices, consensus_az, cand_speed, mean_ncc, cand_az))
 
-        class _SimpleEst:
-            pass
+    if not candidates:
+        return [], [], heatmap
 
-        corr_abs = abs(corr_val)
-        est = _SimpleEst()
-        est.position_lat = est_lat
-        est.position_lon = est_lon
-        est.azimuth_deg = float(estimated_azimuth)
-        est.speed_ms = float(estimated_speed)
-        est.correlation = float(corr_abs)
-        est.confidence = float(max(0, min(1, (corr_abs - 0.5) * 2)))
-        qual = "good" if corr_abs > 0.9 else "marginal" if corr_abs > 0.7 else "poor"
-        est.quality = {"quality": qual}
-        est.filtered_lat = None
-        est.filtered_lon = None
-        est.timestamp = i / freq_hz
+    def _score(c):
+        _, _, consensus_az, _, mncc, _ = c
+        ad = min(abs(consensus_az - primary_az), abs(consensus_az - primary_az - 360), abs(consensus_az - primary_az + 360))
+        bonus = 0.03 * max(0, 1.0 - ad / 90.0)
+        return mncc + bonus
 
-        pipeline.last_estimate = est
-        pipeline.center_lat = est_lat
-        pipeline.center_lon = est_lon
+    candidates.sort(key=_score, reverse=True)
+    best = candidates[0]
 
-        estimates.append(est)
-        estimate_indices.append(i - ws + 1)
+    ambiguous = False
+    if len(candidates) > 1:
+        c0_az = candidates[0][2]
+        c1_az = candidates[1][2]
+        ang = min(abs(c0_az - c1_az), abs(c0_az - c1_az - 360), abs(c0_az - c1_az + 360))
+        if ang > 30 and candidates[1][4] > 0.90 * candidates[0][4]:
+            ambiguous = True
 
-    return estimates, estimate_indices
+    heatmap["ambiguous"] = ambiguous
+
+    estimates, indices, best_az, best_speed, _, _ = best
+    estimates, indices = _ransac_filter(estimates, indices)
+    heatmap["best_azimuth"] = float(best_az)
+    heatmap["best_speed"] = float(best_speed)
+    return estimates, indices, heatmap
 
 
 def collect_result(
@@ -260,6 +535,7 @@ def collect_result(
     estimates: List,
     radar_altitudes: np.ndarray,
     estimate_indices: Optional[List[int]] = None,
+    heatmap_data: Optional[dict] = None,
 ) -> CheckpointResult:
     n_steps = len(true_lats)
     true_rows = []
@@ -271,26 +547,46 @@ def collect_result(
 
     true_terrain = dem.elevation_batch(true_lats, true_lons).tolist()
 
+    if heatmap_data is None:
+        heatmap_data = {}
+
+    best_az = heatmap_data.get("best_azimuth")
+    best_sp = estimates[0].speed_ms if estimates else None
+
     if not estimates:
         return CheckpointResult(
             true_lats=list(true_lats),
             true_lons=list(true_lons),
-            true_rows=true_rows,
-            true_cols=true_cols,
-            est_lats=[],
-            est_lons=[],
-            est_rows=[],
-            est_cols=[],
-            errors_m=[],
-            correlations=[],
-            qualities=[],
-            radar_altitudes=radar_altitudes.tolist(),
-            true_terrain=true_terrain,
-            n_estimates=0,
-            n_steps=n_steps,
-            start_lat=float(true_lats[0]),
-            start_lon=float(true_lons[0]),
-        )
+                true_rows=true_rows,
+                true_cols=true_cols,
+                est_lats=[],
+                est_lons=[],
+                est_rows=[],
+                est_cols=[],
+                errors_m=[],
+                correlations=[],
+                qualities=[],
+                confidences=[],
+                discrimination_ratios=[],
+                peak_to_valleys=[],
+                terrain_stds=[],
+                radar_altitudes=radar_altitudes.tolist(),
+                true_terrain=true_terrain,
+                n_estimates=0,
+                n_steps=n_steps,
+                start_lat=float(true_lats[0]),
+                start_lon=float(true_lons[0]),
+                best_azimuth=best_az,
+                best_speed=best_sp,
+                heatmap_azimuths=heatmap_data.get("azimuths"),
+                heatmap_ncc_vals=heatmap_data.get("ncc_vals"),
+                heatmap_best_corr=heatmap_data.get("best_correlation"),
+                heatmap_top_azimuths=heatmap_data.get("top_azimuths"),
+                heatmap_top_corrs=heatmap_data.get("top_correlations"),
+                informativity_ratio=heatmap_data.get("informativity_ratio"),
+                heatmap_terrain_std=heatmap_data.get("terrain_std"),
+                heatmap_ambiguous=heatmap_data.get("ambiguous", False),
+            )
 
     n_est = len(estimates)
     est_lats = []
@@ -300,6 +596,10 @@ def collect_result(
     errors_m = []
     correlations = []
     qualities = []
+    confidences = []
+    discrimination_ratios = []
+    peak_to_valleys = []
+    terrain_stds = []
 
     for i, est in enumerate(estimates):
         elat = float(est.position_lat)
@@ -319,6 +619,10 @@ def collect_result(
 
         correlations.append(float(est.correlation))
         qualities.append(est.quality.get("quality", "unknown") if est.quality else "unknown")
+        confidences.append(float(getattr(est, "confidence", 0.5)))
+        discrimination_ratios.append(float(getattr(est, "discrimination_ratio", 1.0)))
+        peak_to_valleys.append(float(getattr(est, "peak_to_valley", 0.0)))
+        terrain_stds.append(float(getattr(est, "terrain_std", 0.0)))
 
     return CheckpointResult(
         true_lats=list(true_lats),
@@ -338,4 +642,18 @@ def collect_result(
         n_steps=n_steps,
         start_lat=float(true_lats[0]),
         start_lon=float(true_lons[0]),
+        best_azimuth=best_az,
+        best_speed=best_sp,
+        heatmap_azimuths=heatmap_data.get("azimuths"),
+        heatmap_ncc_vals=heatmap_data.get("ncc_vals"),
+        heatmap_best_corr=heatmap_data.get("best_correlation"),
+        heatmap_top_azimuths=heatmap_data.get("top_azimuths"),
+        heatmap_top_corrs=heatmap_data.get("top_correlations"),
+        informativity_ratio=heatmap_data.get("informativity_ratio"),
+        heatmap_terrain_std=heatmap_data.get("terrain_std"),
+        heatmap_ambiguous=heatmap_data.get("ambiguous", False),
+        confidences=confidences,
+        discrimination_ratios=discrimination_ratios,
+        peak_to_valleys=peak_to_valleys,
+        terrain_stds=terrain_stds,
     )
