@@ -24,10 +24,12 @@
     <div class="mb-3">
       <label class="form-label">DEM (GeoTIFF)</label>
       <input type="file" id="dem-input" accept=".tif,.tiff" class="form-control bg-dark border-secondary text-light">
+      <div class="form-text text-secondary-emphasis">Карта рельефа, по которой TERCOM ищет положение БПЛА</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Высоты (.txt, одна высота на строку)</label>
       <input type="file" id="alt-input" accept=".txt" class="form-control bg-dark border-secondary text-light">
+      <div class="form-text text-secondary-emphasis">Барометрические высоты с БПЛА за время полёта</div>
     </div>
   </div>
 
@@ -35,22 +37,27 @@
     <div class="mb-3">
       <label class="form-label">start_x</label>
       <input type="number" id="start-x" step="any" class="form-control bg-dark border-secondary text-light" value="200">
+      <div class="form-text text-secondary-emphasis">Начальная точка полёта (зависит от формата ниже)</div>
     </div>
     <div class="mb-3">
       <label class="form-label">start_y</label>
       <input type="number" id="start-y" step="any" class="form-control bg-dark border-secondary text-light" value="200">
+      <div class="form-text text-secondary-emphasis">Начальная точка полёта (зависит от формата ниже)</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Азимут (° от севера)</label>
       <input type="number" id="azimuth" step="any" class="form-control bg-dark border-secondary text-light" value="45">
+      <div class="form-text text-secondary-emphasis">0° → север, 90° → восток, 180° → юг, 270° → запад</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Скорость (м/с)</label>
       <input type="number" id="speed" step="any" class="form-control bg-dark border-secondary text-light" value="60">
+      <div class="form-text text-secondary-emphasis">Скорость БПЛА для расчёта пройденного пути между замерами</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Частота (Гц)</label>
       <input type="number" id="freq" step="any" class="form-control bg-dark border-secondary text-light" value="10">
+      <div class="form-text text-secondary-emphasis">Как часто делались замеры высот (10 Гц = 10 раз/с)</div>
     </div>
   </div>
 
@@ -70,6 +77,7 @@
         <label class="form-check-label" for="ct-proj">Проецированные (easting, northing)</label>
       </div>
     </div>
+    <div class="form-text text-secondary-emphasis mt-2">Пиксели: индексы строки/колонки в DEM · Гео: широта/долгота в градусах · Проецированные: метры в CRS карты</div>
   </div>
 
   <button id="run-btn" class="btn btn-primary btn-lg w-100" onclick="runCheckpoint()" disabled>
