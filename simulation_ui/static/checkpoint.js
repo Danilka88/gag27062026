@@ -56,6 +56,7 @@ function showResults(data) {
     `макс ${stats.max_error_m || '—'} м · ø NCC ${stats.mean_correlation || '—'}`;
 
   renderMap(data);
+  renderProfileChart(data);
   renderTable(data);
 }
 
@@ -126,6 +127,16 @@ function renderMap(data) {
   }
 
   cpMap.fitBounds(trueLine.getBounds().pad(0.15));
+}
+
+function renderProfileChart(data) {
+  const container = document.getElementById('cp-profile-chart');
+  const svg = data.profile_svg;
+  if (svg) {
+    container.innerHTML = svg;
+  } else {
+    container.innerHTML = '';
+  }
 }
 
 function renderTable(data) {

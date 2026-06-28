@@ -21,6 +21,8 @@ class CheckpointResult:
     errors_m: List[float]
     correlations: List[float]
     qualities: List[str]
+    radar_altitudes: List[float]
+    true_terrain: List[float]
     n_estimates: int
     n_steps: int
     start_lat: float
@@ -38,6 +40,8 @@ class CheckpointResult:
             "n_steps": self.n_steps,
             "start_lat": self.start_lat,
             "start_lon": self.start_lon,
+            "radar_altitudes": [round(float(a), 2) for a in self.radar_altitudes],
+            "true_terrain": [round(float(t), 2) for t in self.true_terrain],
             "segments": [
                 {
                     "step": i,
@@ -250,6 +254,7 @@ def collect_result(
     true_lats: np.ndarray,
     true_lons: np.ndarray,
     estimates: List,
+    radar_altitudes: np.ndarray,
     estimate_indices: Optional[List[int]] = None,
 ) -> CheckpointResult:
     n_steps = len(true_lats)
@@ -259,6 +264,8 @@ def collect_result(
         r, c = dem.lonlat_to_pixel(lat, lon)
         true_rows.append(r)
         true_cols.append(c)
+
+    true_terrain = dem.elevation_batch(true_lats, true_lons).tolist()
 
     if not estimates:
         return CheckpointResult(
@@ -273,6 +280,8 @@ def collect_result(
             errors_m=[],
             correlations=[],
             qualities=[],
+            radar_altitudes=radar_altitudes.tolist(),
+            true_terrain=true_terrain,
             n_estimates=0,
             n_steps=n_steps,
             start_lat=float(true_lats[0]),
@@ -319,6 +328,8 @@ def collect_result(
         errors_m=errors_m,
         correlations=correlations,
         qualities=qualities,
+        radar_altitudes=radar_altitudes.tolist(),
+        true_terrain=true_terrain,
         n_estimates=n_est,
         n_steps=n_steps,
         start_lat=float(true_lats[0]),

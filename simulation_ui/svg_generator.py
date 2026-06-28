@@ -1145,3 +1145,39 @@ def svg_analysis_overview(
 
     h = 340 + (30 if recovery else 0)
     return _svg_wrap("".join(parts), h)
+
+
+def svg_checkpoint_profile(radar_altitudes: List[float], true_terrain: List[float]) -> str:
+    if len(radar_altitudes) < 2:
+        return ""
+    pw, ph = 440, 200
+    radar = np.array(radar_altitudes)
+    terrain = np.array(true_terrain)
+    vmin = min(float(np.min(radar)), float(np.min(terrain))) - 10
+    vmax = max(float(np.max(radar)), float(np.max(terrain))) + 10
+    if vmax <= vmin:
+        vmax = vmin + 100
+    n = len(radar)
+    parts = []
+    parts.append('<text x="250" y="16" fill="#dee2e6" font-size="12" text-anchor="middle" font-family="monospace">Профиль высот: радар vs рельеф</text>')
+    for i in range(5):
+        y = 20 + ph * i / 4
+        val = vmax - (vmax - vmin) * i / 4
+        parts.append(f'<line x1="28" y1="{y:.1f}" x2="470" y2="{y:.1f}" stroke="#495057" stroke-width="0.5"/>')
+        parts.append(f'<text x="26" y="{y+3:.1f}" fill="#adb5bd" font-size="9" text-anchor="end" font-family="monospace">{val:.0f}</text>')
+    def _pts(vals):
+        pts = []
+        for i in range(len(vals)):
+            x = 30 + i * pw / max(len(vals) - 1, 1)
+            y = 20 + ph - (vals[i] - vmin) / (vmax - vmin) * ph
+            pts.append(f"{x:.1f},{y:.1f}")
+        return " ".join(pts)
+    parts.append(f'<polyline points="{_pts(radar)}" fill="none" stroke="#6ea8fe" stroke-width="1.5" stroke-linejoin="round"/>')
+    parts.append(f'<polyline points="{_pts(terrain)}" fill="none" stroke="#75b798" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4,3"/>')
+    parts.append('<text x="380" y="135" fill="#75b798" font-size="9" font-family="monospace">рельеф DEM (true)</text>')
+    parts.append('<text x="380" y="155" fill="#6ea8fe" font-size="9" font-family="monospace">радарные высоты</text>')
+    if n > 1:
+        cc = float(np.corrcoef(radar, terrain)[0, 1])
+        parts.append(f'<text x="380" y="175" fill="#dee2e6" font-size="9" font-family="monospace">NCC: {cc:.3f}</text>')
+    parts.append('<text x="250" y="250" fill="#adb5bd" font-size="10" text-anchor="middle" font-family="monospace">отсчёт (шаг)</text>')
+    return _svg_wrap("".join(parts), 260)

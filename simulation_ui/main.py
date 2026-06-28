@@ -15,6 +15,7 @@ from gagarin.checkpoint import (
     read_altitudes, convert_start_point,
     compute_true_trajectory, run_tercom, collect_result,
 )
+from simulation_ui.svg_generator import svg_checkpoint_profile
 
 app = FastAPI(title="Gagarin Simulation UI")
 
@@ -139,9 +140,13 @@ async def api_checkpoint_run(
                                estimated_speed=speed, estimated_azimuth=azimuth,
                                freq_hz=freq)
 
-        result = collect_result(dem, true_lats, true_lons, estimates, estimate_indices=estimate_indices)
+        result = collect_result(dem, true_lats, true_lons, estimates, altitudes, estimate_indices=estimate_indices)
         data = result.to_dict()
         data["start_lat"] = start_lat
         data["start_lon"] = start_lon
+        data["profile_svg"] = svg_checkpoint_profile(
+            data.get("radar_altitudes", []),
+            data.get("true_terrain", []),
+        )
 
         return data
