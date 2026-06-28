@@ -70,7 +70,7 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 | **eskf** | `eskf.py` | `ErrorStateKalmanFilter` | 6D-фильтр. solve vs inv. Degree bug fixed. |
 | **pipeline** | `pipeline.py` | `NavigationPipeline` | Оркестратор: буфер→корреляция→оценка→dead reckoning→ESKF. |
 | **viz/mission** | `viz/mission.py` | `mission_viewer()` | 3-панельный HTML-вьювер для pre-flight mission package: карта, профиль информативности, fingerprint-матрица. |
-| **checkpoint** | `checkpoint.py` | `CheckpointResult`, `WindowEstimate`, `run_tercom()`, `_azimuth_consensus()`, `_ransac_filter()`, `_ncc_adaptive()`, `_classify_quality()`, `_search_position_grid()` | TERCOM-коррекция по файлу высот. Адаптивный NCC, position grid ±4 px, multi-start, NCC-weighted consensus, RANSAC, ambiguity detection. |
+| **checkpoint** | `checkpoint.py` | `CheckpointResult`, `WindowEstimate`, `run_tercom()`, `_mad()` (mean‑sub), `_search_position_grid()` (5-tuple), `_search_speed()`, `_process_windows()` (4 gates), `_azimuth_consensus()`, `_ransac_filter()`, `_ncc_adaptive()`, `_classify_quality()` (+mad), `_eskf_filter_estimates()` (DR-based) | TERCOM-коррекция по файлу высот. MAD+NCC гибрид, minima ratio, pre‑rejection gates, ESKF с DR-пропагацией. |
 | **data_generator** | `data_generator.py` | `DataGenerator` | Симулирует полёт: NMEA строки с шумом. |
 | **cli** | `cli.py` | CLI (click) | Точка входа: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `analyze`. |
 | **simulation_ui** | `simulation_ui/main.py` | FastAPI SSE endpoint | Сервер для интерактивной симуляции TERCOM в реальном времени. Endpoint: `GET /api/simulate/{id}` → SSE stream из 14 шагов. |
@@ -80,7 +80,17 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 | **simulation_ui/static** | `simulation_ui/static/app.js` | SSE-клиент, step buffer, auto-play, speed control | SPA: выбор сценария → SSE стрим → пошаговый просмотр с авто-проигрыванием (×1–×10). |
 | **simulation_ui/static** | `simulation_ui/static/style.css` | Bootstrap dark theme + кастомные классы | Анимации, progress bar, stepper, phase-цвета, why-grid. |
 
-## Ключевые решения
+## Ключевые решения (чекпоинт — 4 фазы)
+
+- **MAD default, NCC для отображения**: `_search_position_grid` использует MAD для поиска (минимизация), возвращает NCC при лучшем MAD. `WindowEstimate.correlation` = NCC, `mad_value` — новое поле. Тепловая карта = NCC (неизменна).
+- **Mean‑subtracted MAD**: вычитание среднего из обоих массивов перед MAD — устраняет baro-смещение. Raw MAD = 500 м, mean‑sub = 0.9 м на правильной позиции.
+- **Minima ratio = `second_best_mad / best_mad`**: адаптивный радиус исключения `min(2, pixel_radius−1)`. Выше = лучше (good ≥ 3.0).
+- **Pre‑rejection gates**: `p2v < 5`, `mad > 30`, `ncc < 0.3`, `discr < 1.0` — консервативные пороги, ни одна корректная оценка не отбрасывается.
+- **ESKF DR-пропагация**: `set_position(offset_coords(lat, lon, dt*speed, azimuth))` перед `predict()` — без этого `predict()` не двигает состояние (dx=0 после reset).
+- **ESKF adaptive R**: `R_pos ∝ 1/(discr−1)`: discr=1.1 → R×100, discr=11 → R×1.
+- **Accuracy после 4 фаз**: 4/8 правильных азимутов. Средняя ошибка: raw 254 м → filtered 156 м (−39%). Crimea — единственная регрессия (неверный азимут).
+
+## Ключевые решения (оригинальные)
 
 - **NavigationEstimate dataclass** вместо dict: `est.azimuth_deg` вместо `est["azimuth_deg"]`. `__dict__` для JSON.
 - **Coarse-to-fine**: 10° coarse → 0.5° fine вокруг top-5. Margin = 6°.
@@ -111,7 +121,7 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 
 ## Производительность
 
-- 40 тестов за ~0.3 с
+- 48 тестов за ~0.3 с
 - Цель RPi: <100 ms/search через JIT
 - ESKF predict/update/reset: << 1 ms
 
@@ -128,9 +138,10 @@ CLI (`cli.py`: `prepare-route`, `viz-mission`, `generate-dem`, `download-dem`, `
 
 ## Что ещё нужно
 
-1. Docstrings на публичные функции/классы (большая работа, механическая)
-2. Реальный DEM Copernicus GLO-30 (скачивание с S3 падает)
-3. INS drift simulation в data_generator
+1. DEM profile caching в `_search_position_grid` — профили различаются только offset'ом, можно предвычислить раз и переиспользовать (×81 скорость на окно)
+2. Реальный DEM Copernicus GLO-30 / SRTM вместо synthetic 400×400 — требуется tiled loading + reprojection
+3. Dynamic heatmap length — `n = f(terrain_std)`: длинная на равнине, короткая в горах
+4. Production‑hardening: статистическая валидация thresholds на множестве real‑world DEM
 
 ## Ссылки
 
